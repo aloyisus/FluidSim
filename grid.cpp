@@ -13,6 +13,7 @@
 
 #define filepath "/Users/JohnnyK/Downloads/Fluids14/"
 
+#define filepath "/Users/JohnnyK/Downloads/Fluids17/"
 
 
 //Constructor for FluidGrid 3d
@@ -223,10 +224,14 @@ void FluidGrid::setupRHS2d() {
     for (int j = 0; j < nheight; j++){
         setr(0,j) = -scale*u->getQuantity(0,j);
         setr(nwidth-1,j) = +scale*u->getQuantity(nwidth,j);
+        setr(0,j) += -scale*u->getQuantity(0,j);
+        setr(nwidth-1,j) += +scale*u->getQuantity(nwidth,j);
     }
     for (int i = 0; i < nwidth; i++){
         setr(i,0) = -scale*v->getQuantity(i,0);
         setr(i,nheight-1) = +scale*v->getQuantity(i,nheight);
+        setr(i,0) += -scale*v->getQuantity(i,0);
+        setr(i,nheight-1) += +scale*v->getQuantity(i,nheight);
     }
     
     
@@ -253,16 +258,22 @@ void FluidGrid::setupRHS3d() {
         for (int j = 0; j < nheight; j++){
             setr(0,j,k) = -scale*u->getQuantity(0,j,k);
             setr(nwidth-1,j,k) = +scale*u->getQuantity(nwidth,j,k);
+            setr(0,j,k) += -scale*u->getQuantity(0,j,k);
+            setr(nwidth-1,j,k) += +scale*u->getQuantity(nwidth,j,k);
         }
     for (int k = 0; k < ndepth; k++)
         for (int i = 0; i < nwidth; i++){
             setr(i,0,k) = -scale*v->getQuantity(i,0,k);
             setr(i,nheight-1,k) = +scale*v->getQuantity(i,nheight,k);
+            setr(i,0,k) += -scale*v->getQuantity(i,0,k);
+            setr(i,nheight-1,k) += +scale*v->getQuantity(i,nheight,k);
         }
     for (int j = 0; j < nheight; j++)
         for (int i = 0; i < nwidth; i++){
             setr(i,j,0) = -scale*w->getQuantity(i,j,0);
             setr(i,j,ndepth-1) = +scale*w->getQuantity(i,j,ndepth);
+            setr(i,j,0) += -scale*w->getQuantity(i,j,0);
+            setr(i,j,ndepth-1) += +scale*w->getQuantity(i,j,ndepth);
         }
    
     
@@ -475,6 +486,7 @@ void FluidGrid::Update(){
     //AddForces();
     
     addDensity(0.45, 0.2, 0.45, 0.1, 0.05, 0.1, 0.75, 0.0, 2.0, 0.0);
+    addDensity(0.45, 0.3, 0.45, 0.1, 0.05, 0.1, 1.0, 0.0, 2.0, 0.0);
     
     temp = maxDivergence3d();
     
