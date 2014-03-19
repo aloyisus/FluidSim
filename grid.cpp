@@ -11,9 +11,165 @@
 
 #define round5(n) floor(n * 100000 + 0.5)/100000
 
-#define filepath "/Users/JohnnyK/Downloads/Fluids14/"
 
-#define filepath "/Users/JohnnyK/Downloads/Fluids17/"
+#define filepath "/Users/JohnnyK/Downloads/Fluids32/"
+
+
+
+//Constructor for SolidCuboid class
+//Note that position and dimensions are given in terms of cells, not space
+SolidCuboid::SolidCuboid(double centrex, double centrey, double centrez, double width, double height, double depth, double alph, double omg)  : centrepos(3,0) {
+    
+    centrepos.at(0) = centrex;
+    centrepos.at(1) = centrey;
+    centrepos.at(2) = centrez;
+
+    w = width;
+    h = height;
+    d = depth;
+    
+    alpha = 2*pi*alph;
+    omega = 2*pi*omg;
+    
+}
+
+//Function to determine if point i,j,k is inside this solid cuboid
+bool SolidCuboid::PointIsInside(double i, double j, double k, double time){
+    
+    vectord cellpos(3,0);
+    cellpos.at(0) = i;
+    cellpos.at(1) = j;
+    cellpos.at(2) = k;
+    
+    bool temp;
+    matrixd invtransform(3,3,0);
+    
+    //rotation of -theta about z-axis
+    invtransform.at(0,0) = cos(alpha + omega*time);
+    invtransform.at(1,0) = -sin(alpha + omega*time);
+    invtransform.at(0,1) = sin(alpha + omega*time);
+    invtransform.at(1,1) = cos(alpha + omega*time);
+    invtransform.at(2,2) = 1.0;
+    
+    cellpos = invtransform*(cellpos - centrepos);
+    
+    temp = (cellpos.at(0) >= - w/2) && (cellpos.at(0) <= + w/2) &&
+           (cellpos.at(1) >= - h/2) && (cellpos.at(1) <= + h/2) &&
+           (cellpos.at(2) >= - d/2) && (cellpos.at(2) <= + d/2);
+    
+    if (temp)
+        printf("");
+    
+    return temp;
+    
+}
+
+vectord SolidCuboid::getVelocity(double x, double y, double z){
+    
+    vectord temp = vectord(3,0);
+    
+    //vector from axis of rotation (z-axis) to x,y,z
+    double rx = x - centrepos.at(0);
+    double ry = y - centrepos.at(1);
+    
+    double distance = sqrt(rx*rx + ry*ry);
+    
+    //get the unit normal to vector (rx,ry)
+    double normx = -ry / distance;
+    double normy = rx / distance;
+    
+    //get magnitude of velocity at x,y, scale the norm vector by this
+    normx *= distance*omega;
+    normy *= distance*omega;
+    
+    temp.at(0) = normx;
+    temp.at(1) = normy;
+    temp.at(2) = 0;
+    
+    return temp;
+    
+}
+
+
+vectord SolidCuboid::getNormal(double x0, double y0, double z0, double time){
+    
+    vectord temp = vectord(3,0);
+    matrixd transform(3,3,0);
+    vectord r = vectord(3,0);
+    
+    r.at(0) = x0;
+    r.at(1) = y0;
+    r.at(2) = z0;
+        
+    //rotation of -theta about z-axis
+    transform.at(0,0) = cos(alpha + omega*time);
+    transform.at(1,0) = -sin(alpha + omega*time);
+    transform.at(0,1) = sin(alpha + omega*time);
+    transform.at(1,1) = cos(alpha + omega*time);
+    transform.at(2,2) = 1.0;
+    
+    r = transform*(r - centrepos);
+
+    double x = r.at(0);
+    double y = r.at(1);
+    double z = r.at(2);
+    
+    
+    if ((y >= fabs(z)*h/d) && (y >= fabs(x)*h/w)){
+        
+        temp.at(0) = 0;
+        temp.at(1) = 1;
+        temp.at(2) = 0;
+    
+    }
+    else if ((y <= fabs(z)*h/d) && (y <= fabs(x)*h/w)){
+        
+        temp.at(0) = 0;
+        temp.at(1) = -1;
+        temp.at(2) = 0;
+        
+    }
+    else if ((x >= fabs(z)*w/d) && (x >= fabs(y)*w/h)){
+        
+        temp.at(0) = 1;
+        temp.at(1) = 0;
+        temp.at(2) = 0;
+        
+    }
+    else if ((x <= fabs(z)*w/d) && (x <= fabs(y)*w/h)){
+        
+        temp.at(0) = -1;
+        temp.at(1) = 0;
+        temp.at(2) = 0;
+        
+    }
+    else if ((z >= fabs(x)*d/w) && (z >= fabs(y)*d/h)){
+        
+        temp.at(0) = 0;
+        temp.at(1) = 0;
+        temp.at(2) = 1;
+        
+    }
+    else if ((z <= fabs(x)*d/w) && (z <= fabs(y)*d/h)){
+        
+        temp.at(0) = 0;
+        temp.at(1) = 0;
+        temp.at(2) = -1;
+        
+    }
+
+    
+    //rotation of +theta about z-axis
+    transform.at(0,0) = cos(alpha + omega*time);
+    transform.at(1,0) = sin(alpha + omega*time);
+    transform.at(0,1) = -sin(alpha + omega*time);
+    transform.at(1,1) = cos(alpha + omega*time);
+    transform.at(2,2) = 1.0;
+    
+    return transform*temp;
+    
+    
+}
 
 
 //Constructor for FluidGrid 3d
@@ -27,7 +183,7 @@ FluidGrid::FluidGrid(int wh, int ht, int dh, double tstep, double rh){
     
     rho = rh;
     
-    CFLnumber = 8;
+    CFLnumber = 5;
     framenumber = 0;
     currtime = 0;
     framedeltaT = tstep;
@@ -35,11 +191,13 @@ FluidGrid::FluidGrid(int wh, int ht, int dh, double tstep, double rh){
     bool writetocache = false;
     
     pressure = new vectord(wh*ht*dh);
+    r = new vectord(wh*ht*dh);
+   
     u = new FluidQuantity(0,0.5,0.5,wh,ht,dh,cellwidth);
     v = new FluidQuantity(0.5,0,0.5,wh,ht,dh,cellwidth);
     w = new FluidQuantity(0.5,0.5,0,wh,ht,dh,cellwidth);
     density = new FluidQuantity(0.5,0.5,0.5,wh,ht,dh,cellwidth);
-    r = new vectord(wh*ht*dh);
+ 
     A = new symmbandd(wh*ht*dh,7,1,wh,wh*ht);
     Ei = new diagonald(wh*ht*dh);
     
@@ -48,36 +206,6 @@ FluidGrid::FluidGrid(int wh, int ht, int dh, double tstep, double rh){
     openvdb::initialize();
     // Create an empty floating-point grid.
     grid = openvdb::FloatGrid::create();
-    
-}
-
-
-//Constructor for FluidGrid 2d
-FluidGrid::FluidGrid(int wh, int ht, double tstep, double rh){
-    
-    cellwidth = 1.0/std::min(wh, ht);
-    
-    nwidth = wh;
-    nheight = ht;
-    
-    rho = rh;
-    
-    CFLnumber = 8;
-    framenumber = 0;
-    currtime = 0;
-    framedeltaT = tstep;
-    nextframetime = tstep;
-    bool writetocache = false;
-    
-    pressure = new vectord(wh*ht);
-    u = new FluidQuantity(0,0.5,wh,ht,cellwidth);
-    v = new FluidQuantity(0.5,0,wh,ht,cellwidth);
-    density = new FluidQuantity(0.5,0.5,wh,ht,cellwidth);
-    r = new vectord(wh*ht);
-    A = new symmbandd(wh*ht,5,1,wh,0);
-    Ei = new diagonald(wh*ht);
-    
-    image = new unsigned char[wh*ht*4];
     
 }
 
@@ -98,50 +226,19 @@ FluidGrid::~FluidGrid(){
 
 
 
-//This builds the pressure coefficients for a 2d grid
-void FluidGrid::setupA2d(){
+//This builds the system of equations Ap = b
+void FluidGrid::BuildLinearSystem(){
     
-    double scale =  deltaT/(rho*cellwidth*cellwidth);
-    
-    int jnwidth;
-    
-    A->fill(0);
-    
-    for(int j=0; j<nheight; j++)
-        for(int i=0; i<nwidth; i++){
-            
-            jnwidth = j*nwidth;
-            
-            if (i > 0)
-                A->at(i+jnwidth,0) += scale;
-            
-            if (j > 0)
-                A->at(i+jnwidth,0) += scale;
-            
-            if (i < nwidth-1){
-                A->at(i+jnwidth,0) += scale;
-                A->at(i+jnwidth,1) = -scale;
-            }
-            
-            if (j < nheight-1){
-                A->at(i+jnwidth,0) += scale;
-                A->at(i+jnwidth,2) = -scale;
-            }
-            
-        };
-
-}
-
-
-//This builds the pressure coefficients for a 3d grid
-void FluidGrid::setupA3d(){
-    
-    double scale =  deltaT/(rho*cellwidth*cellwidth);
+    double Ascale =  deltaT/(rho*cellwidth*cellwidth);
+    double rscale = 1.0/cellwidth;
     
     int jnwidth,knwidthnheight;
     
     A->fill(0);
     
+    r->fill(0);
+    
+    //Setup up the matrix of pressure coefficients, weighted by volumes
     for(int k=0; k<ndepth; k++)
         for(int j=0; j<nheight; j++)
             for(int i=0; i<nwidth; i++){
@@ -149,45 +246,61 @@ void FluidGrid::setupA3d(){
                 jnwidth = j*nwidth;
                 knwidthnheight = k*nwidth*nheight;
                 
+
                 if (i > 0)
-                    A->at(i+jnwidth+knwidthnheight,0) += scale;
+                    A->at(i+jnwidth+knwidthnheight,0) += Ascale*u->getVolume(i,j,k);
                 
                 if (j > 0)
-                    A->at(i+jnwidth+knwidthnheight,0) += scale;
+                    A->at(i+jnwidth+knwidthnheight,0) += Ascale*v->getVolume(i,j,k);
                 
                 if (k > 0)
-                    A->at(i+jnwidth+knwidthnheight,0) += scale;
+                    A->at(i+jnwidth+knwidthnheight,0) += Ascale*w->getVolume(i,j,k);
                 
                 if (i < nwidth-1){
-                    A->at(i+jnwidth+knwidthnheight,0) += scale;
-                    A->at(i+jnwidth+knwidthnheight,1) = -scale;
+                    A->at(i+jnwidth+knwidthnheight,0) += Ascale*u->getVolume(i+1,j,k);
+                    A->at(i+jnwidth+knwidthnheight,1) = -Ascale*u->getVolume(i+1,j,k);
                 }
                 
                 if (j < nheight-1){
-                    A->at(i+jnwidth+knwidthnheight,0) += scale;
-                    A->at(i+jnwidth+knwidthnheight,2) = -scale;
+                    A->at(i+jnwidth+knwidthnheight,0) += Ascale*v->getVolume(i,j+1,k);
+                    A->at(i+jnwidth+knwidthnheight,2) = -Ascale*v->getVolume(i,j+1,k);
                 }
                 
                 if (k < ndepth-1){
-                    A->at(i+jnwidth+knwidthnheight,0) += scale;
-                    A->at(i+jnwidth+knwidthnheight,3) = -scale;
+                    A->at(i+jnwidth+knwidthnheight,0) += Ascale*w->getVolume(i,j,k+1);
+                    A->at(i+jnwidth+knwidthnheight,3) = -Ascale*w->getVolume(i,j,k+1);
                 }
+                
+                
+                setr(i,j,k) = -rscale*(u->getVolume(i+1,j,k)*u->getQuantity(i+1,j,k) - u->getVolume(i,j,k)*u->getQuantity(i,j,k) +
+                                      v->getVolume(i,j+1,k)*v->getQuantity(i,j+1,k) - v->getVolume(i,j,k)*v->getQuantity(i,j,k) +
+                                      w->getVolume(i,j,k+1)*w->getQuantity(i,j,k+1) - w->getVolume(i,j,k)*w->getQuantity(i,j,k));
+                
+                
+                
+                
+                setr(i,j,k) += rscale*((u->getVolume(i+1,j,k)-density->getVolume(i,j,k))*
+                                      cellwidth*solid->getVelocity(i+1+u->getOffsetx(),j+u->getOffsety(),k+u->getOffsetz()).at(0) -
+                                      (u->getVolume(i,j,k)-density->getVolume(i,j,k))*
+                                      cellwidth*solid->getVelocity(i+u->getOffsetx(),j+u->getOffsety(),k+u->getOffsetz()).at(0) +
+                                      (v->getVolume(i,j+1,k)-density->getVolume(i,j,k))*
+                                      cellwidth*solid->getVelocity(i+v->getOffsetx(),j+1+v->getOffsety(),k+v->getOffsetz()).at(1) -
+                                      (v->getVolume(i,j,k)-density->getVolume(i,j,k))*
+                                      cellwidth*solid->getVelocity(i+v->getOffsetx(),j+v->getOffsety(),k+v->getOffsetz()).at(1) +
+                                       (w->getVolume(i,j,k+1)-density->getVolume(i,j,k))*
+                                      cellwidth*solid->getVelocity(i+w->getOffsetx(),j+w->getOffsety(),k+1+w->getOffsetz()).at(2) -
+                                      (w->getVolume(i,j,k)-density->getVolume(i,j,k))*
+                                      cellwidth*solid->getVelocity(i+w->getOffsetx(),j+w->getOffsety(),k+w->getOffsetz()).at(2));
+                
+                
+                
+
+                
+                
             
             
             };
-    
-}
 
-
-void FluidGrid::Advect2d(){
-    
-    density->Advect(deltaT,*u,*v);
-    u->Advect(deltaT,*u,*v);
-    v->Advect(deltaT,*u,*v);
-    
-    u->swap();
-    v->swap();
-    density->swap();
     
 }
 
@@ -207,131 +320,312 @@ void FluidGrid::Advect3d(){
 }
 
 
-//Construct RHS of pressure equations for 2d grid
-void FluidGrid::setupRHS2d() {
-    double scale = 1.0/cellwidth;
+//REWRITE THIS HORRIBLE FUNCTION, IT IS UGLY AND SLOOOOW AS F***
+//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+//Fill up the volume samples of the grid
+void FluidGrid::CalculateVolumes(){
     
-    for (int j = 0; j < nheight; j++) {
-        for (int i = 0; i < nwidth; i++) {
-
-            setr(i,j) = -scale*(u->getQuantity(i+1,j) - u->getQuantity(i,j) +
-                                v->getQuantity(i,j+1) - v->getQuantity(i,j));
-        }
-    }
+    double* supervol = new double[nwidth*nheight*ndepth*8];
     
-    
-    //Solid wall boundary conditions
-    for (int j = 0; j < nheight; j++){
-        setr(0,j) = -scale*u->getQuantity(0,j);
-        setr(nwidth-1,j) = +scale*u->getQuantity(nwidth,j);
-        setr(0,j) += -scale*u->getQuantity(0,j);
-        setr(nwidth-1,j) += +scale*u->getQuantity(nwidth,j);
-    }
-    for (int i = 0; i < nwidth; i++){
-        setr(i,0) = -scale*v->getQuantity(i,0);
-        setr(i,nheight-1) = +scale*v->getQuantity(i,nheight);
-        setr(i,0) += -scale*v->getQuantity(i,0);
-        setr(i,nheight-1) += +scale*v->getQuantity(i,nheight);
-    }
-    
-    
-}
-
-//Construct RHS of pressure equations for 3d grid
-void FluidGrid::setupRHS3d() {
-    double scale = 1.0/cellwidth;
-    
-    //see Bridson p.45
-    for (int k = 0; k < ndepth; k++)
-        for (int j = 0; j < nheight; j++)
-            for (int i = 0; i < nwidth; i++) {
+    //Perform 2x2x2 supersampling over entire grid, so each ijk cell will be sampled 8 times
+    for (int k=0; k<2*ndepth; k++)
+        for (int j=0; j<2*nheight; j++)
+            for (int i=0; i<2*nwidth; i++){
                 
-                setr(i,j,k) = -scale*(u->getQuantity(i+1,j,k) - u->getQuantity(i,j,k) +
-                                      v->getQuantity(i,j+1,k) - v->getQuantity(i,j,k) +
-                                      w->getQuantity(i,j,k+1) - w->getQuantity(i,j,k));
+                supervol[i+j*2*nwidth+k*4*nwidth*nheight] = solid->PointIsInside(0.25+i*0.5, 0.25+j*0.5, 0.25+k*0.5, getSimtime());
+               
             }
-
-    
-
-    //Solid wall boundary conditions see Bridson p.49
-    for (int k = 0; k < ndepth; k++)
-        for (int j = 0; j < nheight; j++){
-            setr(0,j,k) = -scale*u->getQuantity(0,j,k);
-            setr(nwidth-1,j,k) = +scale*u->getQuantity(nwidth,j,k);
-            setr(0,j,k) += -scale*u->getQuantity(0,j,k);
-            setr(nwidth-1,j,k) += +scale*u->getQuantity(nwidth,j,k);
-        }
-    for (int k = 0; k < ndepth; k++)
-        for (int i = 0; i < nwidth; i++){
-            setr(i,0,k) = -scale*v->getQuantity(i,0,k);
-            setr(i,nheight-1,k) = +scale*v->getQuantity(i,nheight,k);
-            setr(i,0,k) += -scale*v->getQuantity(i,0,k);
-            setr(i,nheight-1,k) += +scale*v->getQuantity(i,nheight,k);
-        }
-    for (int j = 0; j < nheight; j++)
-        for (int i = 0; i < nwidth; i++){
-            setr(i,j,0) = -scale*w->getQuantity(i,j,0);
-            setr(i,j,ndepth-1) = +scale*w->getQuantity(i,j,ndepth);
-            setr(i,j,0) += -scale*w->getQuantity(i,j,0);
-            setr(i,j,ndepth-1) += +scale*w->getQuantity(i,j,ndepth);
-        }
    
+    double posx,posy,posz;
+    
+    for (int k=0; k<u->getzSamples(); k++)
+        for (int j=0; j<u->getySamples(); j++)
+            for (int i=0; i<u->getxSamples(); i++){
+                
+                //get position of sample in 'cell space'
+                posx = i+u->getOffsetx();
+                posy = j+u->getOffsety();
+                posz = k+u->getOffsetz();
+                
+                int ix0 = floor((posx-0.25)*2);
+                int ix1 = ix0 + 1;
+                
+                int iy0 = floor((posy-0.25)*2);
+                int iy1 = iy0 + 1;
+                
+                int iz0 = floor((posz-0.25)*2);
+                int iz1 = iz0 + 1;
+                
+                u->setVolume(i,j,k) = 8.0;
+                
+                if (ix0 >= 0){
+                    u->setVolume(i,j,k) -= supervol[ix0+iy0*2*nwidth+iz0*4*nwidth*nheight];
+                    u->setVolume(i,j,k) -= supervol[ix0+iy1*2*nwidth+iz0*4*nwidth*nheight];
+                    u->setVolume(i,j,k) -= supervol[ix0+iy0*2*nwidth+iz1*4*nwidth*nheight];
+                    u->setVolume(i,j,k) -= supervol[ix0+iy1*2*nwidth+iz1*4*nwidth*nheight];
+                }
+                
+                if (ix1 <= 2*nwidth-1){
+                    u->setVolume(i,j,k) -= supervol[ix1+iy0*2*nwidth+iz0*4*nwidth*nheight];
+                    u->setVolume(i,j,k) -= supervol[ix1+iy1*2*nwidth+iz0*4*nwidth*nheight];
+                    u->setVolume(i,j,k) -= supervol[ix1+iy0*2*nwidth+iz1*4*nwidth*nheight];
+                    u->setVolume(i,j,k) -= supervol[ix1+iy1*2*nwidth+iz1*4*nwidth*nheight];
+                }
+                
+                u->setVolume(i,j,k) = u->setVolume(i,j,k)/8.0;
+                
+                
+            }
+    
+    for (int k=0; k<v->getzSamples(); k++)
+        for (int j=0; j<v->getySamples(); j++)
+            for (int i=0; i<v->getxSamples(); i++){
+                
+                //get position of sample in 'cell space'
+                posx = i+v->getOffsetx();
+                posy = j+v->getOffsety();
+                posz = k+v->getOffsetz();
+                
+                int ix0 = floor((posx-0.25)*2);
+                int ix1 = ix0 + 1;
+                
+                int iy0 = floor((posy-0.25)*2);
+                int iy1 = iy0 + 1;
+                
+                int iz0 = floor((posz-0.25)*2);
+                int iz1 = iz0 + 1;
+                
+                v->setVolume(i,j,k) = 8.0;
+                
+                if (iy0 >= 0){
+                    v->setVolume(i,j,k) -= supervol[ix0+iy0*2*nwidth+iz0*4*nwidth*nheight];
+                    v->setVolume(i,j,k) -= supervol[ix1+iy0*2*nwidth+iz0*4*nwidth*nheight];
+                    v->setVolume(i,j,k) -= supervol[ix0+iy0*2*nwidth+iz1*4*nwidth*nheight];
+                    v->setVolume(i,j,k) -= supervol[ix1+iy0*2*nwidth+iz1*4*nwidth*nheight];
+                }
+                
+                if (iy1 <= 2*nheight-1){
+                    v->setVolume(i,j,k) -= supervol[ix0+iy1*2*nwidth+iz0*4*nwidth*nheight];
+                    v->setVolume(i,j,k) -= supervol[ix1+iy1*2*nwidth+iz0*4*nwidth*nheight];
+                    v->setVolume(i,j,k) -= supervol[ix0+iy1*2*nwidth+iz1*4*nwidth*nheight];
+                    v->setVolume(i,j,k) -= supervol[ix1+iy1*2*nwidth+iz1*4*nwidth*nheight];
+                }
+                
+                v->setVolume(i,j,k) = v->setVolume(i,j,k)/8.0;
+                
+            }
+                
+    
+    for (int k=0; k<w->getzSamples(); k++)
+        for (int j=0; j<w->getySamples(); j++)
+            for (int i=0; i<w->getxSamples(); i++){
+                
+                //get position of sample in 'cell space'
+                posx = i+w->getOffsetx();
+                posy = j+w->getOffsety();
+                posz = k+w->getOffsetz();
+            
+                int ix0 = floor((posx-0.25)*2);
+                int ix1 = ix0 + 1;
+                
+                int iy0 = floor((posy-0.25)*2);
+                int iy1 = iy0 + 1;
+                
+                int iz0 = floor((posz-0.25)*2);
+                int iz1 = iz0 + 1;
+                
+                w->setVolume(i,j,k) = 8.0;
+                
+                if (iz0 >= 0){
+                    w->setVolume(i,j,k) -= supervol[ix0+iy0*2*nwidth+iz0*4*nwidth*nheight];
+                    w->setVolume(i,j,k) -= supervol[ix1+iy0*2*nwidth+iz0*4*nwidth*nheight];
+                    w->setVolume(i,j,k) -= supervol[ix0+iy1*2*nwidth+iz0*4*nwidth*nheight];
+                    w->setVolume(i,j,k) -= supervol[ix1+iy1*2*nwidth+iz0*4*nwidth*nheight];
+                }
+                
+                if (iz1 <= 2*ndepth-1){
+                    w->setVolume(i,j,k) -= supervol[ix0+iy0*2*nwidth+iz1*4*nwidth*nheight];
+                    w->setVolume(i,j,k) -= supervol[ix1+iy0*2*nwidth+iz1*4*nwidth*nheight];
+                    w->setVolume(i,j,k) -= supervol[ix0+iy1*2*nwidth+iz1*4*nwidth*nheight];
+                    w->setVolume(i,j,k) -= supervol[ix1+iy1*2*nwidth+iz1*4*nwidth*nheight];
+                }
+                
+                w->setVolume(i,j,k) = w->setVolume(i,j,k)/8.0;
+    
+            }
     
     
+    for (int k=0; k<density->getzSamples(); k++)
+        for (int j=0; j<density->getySamples(); j++)
+            for (int i=0; i<density->getxSamples(); i++){
+                
+                //get position of sample in 'cell space'
+                posx = i+density->getOffsetx();
+                posy = j+density->getOffsety();
+                posz = k+density->getOffsetz();
+                
+                int ix0 = floor((posx-0.25)*2);
+                int ix1 = ix0 + 1;
+                
+                int iy0 = floor((posy-0.25)*2);
+                int iy1 = iy0 + 1;
+                
+                int iz0 = floor((posz-0.25)*2);
+                int iz1 = iz0 + 1;
+
+
+                density->setVolume(i,j,k) = 8.0;
+                
+                density->setVolume(i,j,k) -= supervol[ix0+iy0*2*nwidth+iz0*4*nwidth*nheight];
+                density->setVolume(i,j,k) -= supervol[ix1+iy0*2*nwidth+iz0*4*nwidth*nheight];
+                density->setVolume(i,j,k) -= supervol[ix0+iy1*2*nwidth+iz0*4*nwidth*nheight];
+                density->setVolume(i,j,k) -= supervol[ix1+iy1*2*nwidth+iz0*4*nwidth*nheight];
+                density->setVolume(i,j,k) -= supervol[ix0+iy0*2*nwidth+iz1*4*nwidth*nheight];
+                density->setVolume(i,j,k) -= supervol[ix1+iy0*2*nwidth+iz1*4*nwidth*nheight];
+                density->setVolume(i,j,k) -= supervol[ix0+iy1*2*nwidth+iz1*4*nwidth*nheight];
+                density->setVolume(i,j,k) -= supervol[ix1+iy1*2*nwidth+iz1*4*nwidth*nheight];
+                
+                density->setVolume(i,j,k) = density->setVolume(i,j,k)/8.0;
+                
+                
+            }
+   
+    delete supervol;
     
 }
 
-
-void FluidGrid::updateVelocities2d() {
-    double scale = deltaT/(rho*cellwidth);
-    
-    //subtract pressure gradients to update velocities
-    for (int j = 0; j < nheight; j++)
-        for (int i = 0; i < nwidth; i++) {
-            
-            double cellpressure = scale*getPressure(i,j);
-            u->setQuantity(i,j) -= cellpressure;
-            u->setQuantity(i+1,j) += cellpressure;
-            v->setQuantity(i,j) -= cellpressure;
-            v->setQuantity(i,j+1) += cellpressure;
-            
-        }
-  
-    
-    //Solid wall boundary conditions
-    for (int j = 0; j < nheight; j++){
-        u->setQuantity(0,j) = 0.0;
-        u->setQuantity(nwidth,j) = 0.0;
-    }
-    for (int i = 0; i < nwidth; i++){
-        v->setQuantity(i,0) =  0.0;
-        v->setQuantity(i,nheight) = 0.0;
-    }
-  
-    
-}
 
 
 void FluidGrid::updateVelocities3d() {
     double scale = deltaT/(rho*cellwidth);
     
-    //subtract pressure gradients to update velocities
+    //subtract pressure gradients to update velocities, only do this on cells with non-zero fluid volume
     for (int k = 0; k < ndepth; k++)
         for (int j = 0; j < nheight; j++)
             for (int i = 0; i < nwidth; i++) {
                 
-                double cellpressure = scale*getPressure(i,j,k);
-                u->setQuantity(i,j,k) -= cellpressure;
-                u->setQuantity(i+1,j,k) += cellpressure;
-                v->setQuantity(i,j,k) -= cellpressure;
-                v->setQuantity(i,j+1,k) += cellpressure;
-                w->setQuantity(i,j,k) -= cellpressure;
-                w->setQuantity(i,j,k+1) += cellpressure;
+                if (density->getVolume(i,j,k) > 0)
+                {
+                    double cellpressure = scale*getPressure(i,j,k);
+                    u->setQuantity(i,j,k) -= cellpressure;
+                    u->setQuantity(i+1,j,k) += cellpressure;
+                    v->setQuantity(i,j,k) -= cellpressure;
+                    v->setQuantity(i,j+1,k) += cellpressure;
+                    w->setQuantity(i,j,k) -= cellpressure;
+                    w->setQuantity(i,j,k+1) += cellpressure;
+                }
+                
+            }
+    
+
+    
+    u->ExtrapolateVelocity();
+    v->ExtrapolateVelocity();
+    w->ExtrapolateVelocity();
+    
+    SetSolidBoundaries();
+   
+    
+}
+
+
+vectord FluidGrid::getVelocity(double x, double y, double z){
+    
+    
+    vectord temp = vectord(3,0);
+    
+    temp.at(0) = u->InterpolateLinear(x,y,z);
+    temp.at(1) = v->InterpolateLinear(x,y,z);
+    temp.at(2) = w->InterpolateLinear(x,y,z);
+    
+    return temp;
+    
+    
+}
+
+
+void FluidGrid::SetSolidBoundaries(){
+
+    u->CopytoBuffer();
+    v->CopytoBuffer();
+    w->CopytoBuffer();
+    
+    vectord vfluid(3,0);
+    vectord vsolid(3,0);
+    vectord normal(3,0);
+    
+    //For cells which have zero volume, set the velocity samples bordering to match the solid velocity
+    for (int k = 0; k < ndepth; k++)
+        for (int j = 0; j < nheight; j++)
+            for (int i = 0; i < nwidth; i++) {
+                
+                if (density->getVolume(i,j,k) == 0)
+                {
+                    
+
+                    vsolid = cellwidth*solid->getVelocity(i+u->getOffsetx(),j+u->getOffsety(),k+u->getOffsetz());
+                    vfluid = getVelocity(i+u->getOffsetx(),j+u->getOffsety(),k+u->getOffsetz());
+                    normal = solid->getNormal(i+u->getOffsetx(),j+u->getOffsety(),k+u->getOffsetz(),currtime);
+                    
+                    u->setBuffer(i,j,k) =  (vfluid - ((vfluid - vsolid)*normal)*normal).at(0);
+                    
+                    vsolid = cellwidth*solid->getVelocity(i+1+u->getOffsetx(),j+u->getOffsety(),k+u->getOffsetz());
+                    vfluid = getVelocity(i+1+u->getOffsetx(),j+u->getOffsety(),k+u->getOffsetz());
+                    normal = solid->getNormal(i+1+u->getOffsetx(),j+u->getOffsety(),k+u->getOffsetz(),currtime);
+                    
+                    u->setBuffer(i+1,j,k) = (vfluid - ((vfluid - vsolid)*normal)*normal).at(0);
+                    
+                    vsolid = cellwidth*solid->getVelocity(i+v->getOffsetx(),j+v->getOffsety(),k+v->getOffsetz());
+                    vfluid = getVelocity(i+v->getOffsetx(),j+v->getOffsety(),k+v->getOffsetz());
+                    normal = solid->getNormal(i+v->getOffsetx(),j+v->getOffsety(),k+v->getOffsetz(),currtime);
+                    
+                    v->setBuffer(i,j,k) = (vfluid - ((vfluid - vsolid)*normal)*normal).at(1);
+                    
+                    vsolid = cellwidth*solid->getVelocity(i+v->getOffsetx(),j+1+v->getOffsety(),k+v->getOffsetz());
+                    vfluid = getVelocity(i+v->getOffsetx(),j+1+v->getOffsety(),k+v->getOffsetz());
+                    normal = solid->getNormal(i+v->getOffsetx(),j+1+v->getOffsety(),k+v->getOffsetz(),currtime);
+                    
+                    v->setBuffer(i,j+1,k) = (vfluid - ((vfluid - vsolid)*normal)*normal).at(1);
+                    
+                    vsolid = cellwidth*solid->getVelocity(i+w->getOffsetx(),j+w->getOffsety(),k+w->getOffsetz());
+                    vfluid = getVelocity(i+w->getOffsetx(),j+w->getOffsety(),k+w->getOffsetz());
+                    normal = solid->getNormal(i+w->getOffsetx(),j+w->getOffsety(),k+w->getOffsetz(),currtime);
+                    
+                    w->setBuffer(i,j,k) = (vfluid - ((vfluid - vsolid)*normal)*normal).at(2);
+                    
+                    vsolid = cellwidth*solid->getVelocity(i+w->getOffsetx(),j+w->getOffsety(),k+1+w->getOffsetz());
+                    vfluid = getVelocity(i+w->getOffsetx(),j+w->getOffsety(),k+1+w->getOffsetz());
+                    normal = solid->getNormal(i+w->getOffsetx(),j+w->getOffsety(),k+1+w->getOffsetz(),currtime);
+                    
+                    w->setBuffer(i,j,k+1) = (vfluid - ((vfluid - vsolid)*normal)*normal).at(2);
+
+                     
+                    /*
+                    //DEBUG
+                    u->setBuffer(i,j,k) = cellwidth*solid->getxVelocity(i+u->getOffsetx(),j+u->getOffsety(),k+u->getOffsetz());
+                    u->setBuffer(i+1,j,k) = cellwidth*solid->getxVelocity(i+1+u->getOffsetx(),j+u->getOffsety(),k+u->getOffsetz());
+                    v->setBuffer(i,j,k) = cellwidth*solid->getyVelocity(i+v->getOffsetx(),j+v->getOffsety(),k+v->getOffsetz());
+                    v->setBuffer(i,j+1,k) = cellwidth*solid->getyVelocity(i+v->getOffsetx(),j+1+v->getOffsety(),k+v->getOffsetz());
+                    w->setBuffer(i,j,k) = cellwidth*solid->getzVelocity(i+w->getOffsetx(),j+w->getOffsety(),k+w->getOffsetz());
+                    w->setBuffer(i,j,k+1) = cellwidth*solid->getzVelocity(i+w->getOffsetx(),j+w->getOffsety(),k+1+w->getOffsetz());
+                    */
+                    
+                    
+                    
+                    
+                    
+                }
                 
             }
     
     
-    //Solid wall boundary conditions
+    u->swap();
+    v->swap();
+    w->swap();
+    
+    
+    //Boundary conditions for the walls of the box
     for (int k = 0; k < ndepth; k++)
         for (int j = 0; j < nheight; j++){
             u->setQuantity(0,j,k) = 0.0;
@@ -347,29 +641,10 @@ void FluidGrid::updateVelocities3d() {
             w->setQuantity(i,j,0) =  0.0;
             w->setQuantity(i,j,ndepth) = 0.0;
         }
-    
-    
-}
-
-
-double FluidGrid::maxDivergence2d() const{
-    
-    double maxdiv = 0;
-    double div;
-    
-    for (int j=0; j<nheight; j++)
-        for (int i=0; i<nwidth; i++){
-            
-            div = 0;
-            div =  fabs(u->getQuantity(i+1,j) - u->getQuantity(i,j) + v->getQuantity(i,j+1) - v->getQuantity(i,j))/cellwidth;
-            
-            maxdiv = fmax(div,maxdiv);
-            
-        }
-
-    return maxdiv;
+   
     
 }
+
 
 
 double FluidGrid::maxDivergence3d() const{
@@ -395,43 +670,20 @@ double FluidGrid::maxDivergence3d() const{
 }
 
 
-//Add density and velocity inside a rectangle
-void FluidGrid::addDensity(double x, double y, double w, double h, double dval, double uval, double vval) {
-    density->addEmitter(x, y, x + w, y + h, dval);
-    u->addEmitter(x, y, x + w, y + h, uval);
-    v->addEmitter(x, y, x + w, y + h, vval);
-    
-}
-
-
 //Add density and velocity inside a cuboid
 void FluidGrid::addDensity(double x, double y, double z, double wh, double h, double l, double dval, double uval, double vval, double wval) {
-    density->addEmitter(x, y, z, x + wh, y + h, z + l, dval);
-    u->addEmitter(x, y, z, x + wh, y + h, z + l, uval);
-    v->addEmitter(x, y, z, x + wh, y + h, z + l, vval);
-    w->addEmitter(x, y, z, x + wh, y + h, z + l, wval);
     
-}
-
-
-void FluidGrid::setDeltaT2d(){
-   
-    double temp = std::max(u->max(),v->max());
+    double x0 = int(x*nwidth);
+    double x1 = int((x+wh)*nwidth);
+    double y0 = int(y*nheight);
+    double y1 = int((y+h)*nheight);
+    double z0 = int(z*ndepth);
+    double z1 = int((z+l)*ndepth);
     
-    if (temp==0)
-        deltaT = framedeltaT;
-    else
-        deltaT = CFLnumber*cellwidth / temp;
-    
-    if (currtime + 1.01*deltaT >= nextframetime){
-        
-        deltaT = nextframetime - currtime;
-        writetocache = true;
-        nextframetime += framedeltaT;
-        
-    }
-    
-    printf("deltaT=%f, currtime=%f, writetocache=%d, framenumber= %d, A->max()=%f\n" ,deltaT,currtime,writetocache,framenumber);
+    density->addEmitter(x0, y0, z0, x1, y1, z1, dval);
+    u->addEmitter(x0, y0, z0, x1, y1, z1, uval);
+    v->addEmitter(x0, y0, z0, x1, y1, z1, vval);
+    w->addEmitter(x0, y0, z0, x1, y1, z1, wval);
     
 }
 
@@ -445,6 +697,9 @@ void FluidGrid::setDeltaT3d(){
     else
         deltaT = CFLnumber*cellwidth / maxvel;
     
+    //DEBUG BECAUSE ABOVE NEEDS MORE WORK
+    deltaT = framedeltaT/2;
+    
     if (currtime + 1.01*deltaT >= nextframetime){
         
         deltaT = nextframetime - currtime;
@@ -453,6 +708,8 @@ void FluidGrid::setDeltaT3d(){
         
     }
     
+    
+    
     printf("deltaT=%f, currtime=%f, writetocache=%d, framenumber= %d\n" ,deltaT,currtime,writetocache,framenumber);
     
 }
@@ -460,10 +717,9 @@ void FluidGrid::setDeltaT3d(){
 
 void FluidGrid::Project(){
     
-    setupRHS3d();
     
-    //CGSolver(*A, *r, *pressure, TOL, MAXITER);
-    PCGSolver(*A, *Ei, *r, *pressure, TOL, MAXITER);
+    CGSolver(*A, *r, *pressure, TOL, MAXITER);
+    //PCGSolver(*A, *Ei, *r, *pressure, TOL, MAXITER);
     //GaussSeidelSolver(*A, *r, *pressure, TOL, MAXITER);
     
     updateVelocities3d();
@@ -471,37 +727,38 @@ void FluidGrid::Project(){
 }
 
 
-
-
-
-
 void FluidGrid::Update(){
 
     float temp;
     
     setDeltaT3d();
+
+    //u->ExtrapolateVelocity();
+    //v->ExtrapolateVelocity();
+    //w->ExtrapolateVelocity();
     
     Advect3d();
     
     //AddForces();
     
-    addDensity(0.45, 0.2, 0.45, 0.1, 0.05, 0.1, 0.75, 0.0, 2.0, 0.0);
-    addDensity(0.45, 0.3, 0.45, 0.1, 0.05, 0.1, 1.0, 0.0, 2.0, 0.0);
+    addDensity(0.45, 0.2, 0.45, 0.1, 0.05, 0.2, 1.0, 0.0, 2.5, 0.0);
     
-    temp = maxDivergence3d();
+    //temp = maxDivergence3d();
     
-    printf("max. divergence before project %f\n", temp);
+    //printf("max. divergence before project %f\n", temp);
    
-    setupA3d();
-    MIC0precon(*A, *Ei);
+    CalculateVolumes();
     
+    BuildLinearSystem();
+    MIC0precon(*A, *Ei);
+   
     Project();
     
     currtime += deltaT;
     
-    temp = maxDivergence3d();
+    //temp = maxDivergence3d();
     
-    printf("max. divergence after project %f\n", temp);
+    //printf("max. divergence after project %f\n", temp);
     
     //3d write to cache
     if (writetocache){
@@ -526,10 +783,13 @@ void FluidGrid::WriteToCache(){
     
     for (k=0; k<ndepth; k++)
         for (j=0; j<nheight; j++)
-            for (i=0; i<nwidth; i++)
-                // Set the distance for voxel (i,j,k).
+            for (i=0; i<nwidth; i++){
+                
                 accessor.setValue(ijk, density->getQuantity(i,j,k));
+                //accessor.setValue(ijk, density->getQuantity(i,j,k) + 1.0 - density->getVolume(i,j,k));
     
+            }
+                
     char outfile[128];
     sprintf(outfile, "%sFrame%05d.vdb",filepath, framenumber++);
     
@@ -546,49 +806,48 @@ void FluidGrid::WriteToCache(){
 }
 
 
-void FluidQuantity::Advect(double timestep, const FluidQuantity& u, const FluidQuantity& v){
+//DEBUG FOR TESTING solid
+void FluidGrid::SolidDensityUpdate(SolidCuboid& solid){
     
-    double x,y;
-    double xmid,ymid;
+    double dens;
     
-    double uvel,vvel;
+    // Define a coordinate with large signed indices.
+    openvdb::Coord ijk;
     
-    for (int j=0; j<ysamples; j++)
-        for (int i=0; i<xsamples; i++){
-            
-            x = i+offsetx;
-            y = j+offsety;
-            
-            uvel = u.InterpolateLinear(x,y) / cellwidth;
-            vvel = v.InterpolateLinear(x,y) / cellwidth;
-            
-            
-            //Forward Euler
-            /*
-            x -= timestep*uvel;
-            y -= timestep*vvel;
-            */
-            
-            
-            
-            //Runge-Kutta 2
-            xmid = x - 0.5*timestep*uvel;
-            ymid = y - 0.5*timestep*vvel;
-            
-            uvel = u.InterpolateLinear(xmid,ymid) / cellwidth;
-            vvel = v.InterpolateLinear(xmid,ymid) / cellwidth;
-            
-            x -= timestep*uvel;
-            y -= timestep*vvel;
-            
-            
-            
-            //setBuffer(i,j) = InterpolateLinear(x,y);
-            setBuffer(i,j) = InterpolateCM(x,y);
-            
-            
-        }
+    int& i = ijk[0];
+    int& j = ijk[1];
+    int& k = ijk[2];
+    
+    // Get an accessor for coordinate-based access to voxels.
+    openvdb::FloatGrid::Accessor accessor = grid->getAccessor();
+    
+    for (k=0; k<ndepth; k++)
+        for (j=0; j<nheight; j++)
+            for (i=0; i<nwidth; i++){
 
+                //dens = solid.PointIsInside(i+0.5,j+0.5,k+0.5,currtime);
+                dens = 1.0 - density->getVolume(i,j,k);
+            
+                accessor.setValue(ijk, dens);
+            
+            }
+                
+    char outfile[128];
+    sprintf(outfile, "%sCubeTest%05d.vdb",filepath, framenumber++);
+    
+    // Create a VDB file object.
+    openvdb::io::File file(outfile);
+    
+    // Add the grid pointer to a container.
+    openvdb::GridPtrVec grids;
+    grids.push_back(grid);
+    // Write out the contents of the container.
+    file.write(grids);
+    file.close();
+    
+    currtime += framedeltaT;
+    
+    
     
 }
 
@@ -600,47 +859,51 @@ void FluidQuantity::Advect(double timestep, const FluidQuantity& u, const FluidQ
     
     double uvel,vvel,wvel;
     
+    
     for (int k=0; k<zsamples; k++)
         for (int j=0; j<ysamples; j++)
             for (int i=0; i<xsamples; i++){
                 
-                x = i+offsetx;
-                y = j+offsety;
-                z = k+offsetz;
+                if (getVolume(i,j,k) > 0){
                 
-                uvel = u.InterpolateLinear(x,y,z) / cellwidth;
-                vvel = v.InterpolateLinear(x,y,z) / cellwidth;
-                wvel = w.InterpolateLinear(x,y,z) / cellwidth;
+                    x = i+offsetx;
+                    y = j+offsety;
+                    z = k+offsetz;
+                    
+                    uvel = u.InterpolateLinear(x,y,z) / cellwidth;
+                    vvel = v.InterpolateLinear(x,y,z) / cellwidth;
+                    wvel = w.InterpolateLinear(x,y,z) / cellwidth;
+                    
+                    
+                    //Forward Euler
+                    /*
+                     x -= timestep*uvel;
+                     y -= timestep*vvel;
+                     z -= timestep*wvel;
+                    */
+                    
+                    
+                    
+                    //Runge-Kutta 2
+                    
+                    xmid = x - 0.5*timestep*uvel;
+                    ymid = y - 0.5*timestep*vvel;
+                    zmid = z - 0.5*timestep*wvel;
+                    
+                    uvel = u.InterpolateLinear(xmid,ymid,zmid) / cellwidth;
+                    vvel = v.InterpolateLinear(xmid,ymid,zmid) / cellwidth;
+                    wvel = w.InterpolateLinear(xmid,ymid,zmid) / cellwidth;
+                    
+                    x -= timestep*uvel;
+                    y -= timestep*vvel;
+                    z -= timestep*wvel;
+                    
+                    
+                    
+                    //setBuffer(i,j,k) = InterpolateLinear(x,y,z);
+                    setBuffer(i,j,k) = InterpolateCM(x,y,z);
                 
-                
-                //Forward Euler
-                /*
-                 x -= timestep*uvel;
-                 y -= timestep*vvel;
-                 z -= timestep*wvel;
-                */
-                
-                
-                
-                //Runge-Kutta 2
-                
-                xmid = x - 0.5*timestep*uvel;
-                ymid = y - 0.5*timestep*vvel;
-                zmid = z - 0.5*timestep*wvel;
-                
-                uvel = u.InterpolateLinear(xmid,ymid,zmid) / cellwidth;
-                vvel = v.InterpolateLinear(xmid,ymid,zmid) / cellwidth;
-                wvel = w.InterpolateLinear(xmid,ymid,zmid) / cellwidth;
-                
-                x -= timestep*uvel;
-                y -= timestep*vvel;
-                z -= timestep*wvel;
-                
-                
-                
-                //setBuffer(i,j,k) = InterpolateLinear(x,y,z);
-                setBuffer(i,j,k) = InterpolateCM(x,y,z);
-                
+                }
                 
             }
     
@@ -678,33 +941,7 @@ FluidQuantity::FluidQuantity(double ofx, double ofy, double ofz,  int w, int h, 
     
     quantity = new vectord(xsamples*ysamples*zsamples,0);
     buffer = new vectord(xsamples*ysamples*zsamples,0);
-    
-}
-
-
-//Constructor for FluidQuantity
-FluidQuantity::FluidQuantity(double ofx, double ofy, int w, int h, double cw){
-    
-    offsetx = ofx;
-    offsety = ofy;
-    
-    if (offsetx == 0){
-        xsamples = w+1;
-    }
-    else{
-        xsamples = w;
-    }
-    if (offsety == 0){
-        ysamples = h+1;
-    }
-    else{
-        ysamples = h;
-    }
-    
-    cellwidth = cw;
-    
-    quantity = new vectord(xsamples*ysamples,0);
-    buffer = new vectord(xsamples*ysamples,0);
+    volume = new vectord(xsamples*ysamples*zsamples,0);
     
 }
 
@@ -714,39 +951,6 @@ FluidQuantity::~FluidQuantity(){
     
     delete quantity;
     delete buffer;
-    
-    
-}
-
-
-double FluidQuantity::InterpolateLinear(double x, double y) const{
-    
-    //transform into the correct dimensionless cellspace for the given offset
-    double cx = x-offsetx;
-    double cy = y-offsety;
-    
-    //Clamp x,y to grid
-    cx = fmax(fmin(cx,xsamples-1.001),0.0);
-    cy = fmax(fmin(cy,ysamples-1.001),0.0);
-    
-    //Get grid co-ordinates of x,y: i,j such that i,j is closer to the origin than x,y
-    int i = int(cx);
-    int j = int(cy);
-    
-    //get relative cell co-ordinates
-    cx -= i;
-    cy -= j;
-    
-    double p00 = getQuantity(i,j);
-    double p10 = getQuantity(i+1,j);
-    double p01 = getQuantity(i,j+1);
-    double p11 = getQuantity(i+1,j+1);
-    
-    //linearly interpolate value of quantity at x,y
-    double edge0 = (1-cx)*p00 + cx*p10;
-    double edge1 = (1-cx)*p01 + cx*p11;
-    
-    return (1-cy)*edge0 + cy*edge1;
     
     
 }
@@ -899,36 +1103,90 @@ double FluidQuantity::InterpolateCMSlice(double x, double y, int k){
 }
 
 
-//Set FluidQuantity inside rectangle
-void FluidQuantity::addEmitter(double x0, double y0, double x1, double y1, double v) {
-    int ix0 = (int)(x0/cellwidth - offsetx);
-    int iy0 = (int)(y0/cellwidth - offsety);
-    int ix1 = (int)(x1/cellwidth - offsetx);
-    int iy1 = (int)(y1/cellwidth - offsety);
-    
-    for (int y = std::max(iy0, 0); y < std::min(iy1, ysamples); y++)
-        for (int x = std::max(ix0, 0); x < std::min(ix1, xsamples); x++)
-            if (fabs(getQuantity(x,y)) < fabs(v))
-                setQuantity(x,y) = v;
-};
+//Set FluidQuantity inside a given volume of space
+void FluidQuantity::addEmitter(int x0, int y0, int z0, int x1, int y1, int z1, double v) {
 
-
-//Set FluidQuantity inside cuboid
-void FluidQuantity::addEmitter(double x0, double y0, double z0, double x1, double y1, double z1, double v) {
-    int ix0 = (int)(x0/cellwidth - offsetx);
-    int iy0 = (int)(y0/cellwidth - offsety);
-    int iz0 = (int)(z0/cellwidth - offsetz);
-    int ix1 = (int)(x1/cellwidth - offsetx);
-    int iy1 = (int)(y1/cellwidth - offsety);
-    int iz1 = (int)(z1/cellwidth - offsetz);
     
-    for (int z = std::max(iz0, 0); z < std::min(iz1, zsamples); z++)
-        for (int y = std::max(iy0, 0); y < std::min(iy1, ysamples); y++)
-            for (int x = std::max(ix0, 0); x < std::min(ix1, xsamples); x++)
+    for (int z = std::max(z0, 0); z < std::min(z1, zsamples); z++)
+        for (int y = std::max(y0, 0); y < std::min(y1, ysamples); y++)
+            for (int x = std::max(x0, 0); x < std::min(x1, xsamples); x++)
                 if (fabs(getQuantity(x,y,z)) < fabs(v))
                     setQuantity(x,y,z) = v;
-};
+}
 
+
+
+
+void FluidQuantity::ExtrapolateVelocity(){
+    
+    bool* valid = new bool[xsamples*ysamples*zsamples];
+    bool* old_valid = new bool[xsamples*ysamples*zsamples];
+    
+    //Initialize the list of valid cells IF WEIGHT IS NON-ZERO THEN CELL IS VALID
+    for(int k = 0; k < zsamples; k++)
+        for(int j = 0; j < ysamples; j++)
+            for(int i = 0; i < xsamples; i++)
+                valid[i + j*xsamples + k*xsamples*ysamples] = getVolume(i,j,k) > 0;
+    
+    for(int layers = 0; layers < 5; ++layers) {
+        
+        for(int i =0; i<xsamples*ysamples*zsamples; i++)
+            old_valid[i] = valid[i];
+        
+        
+        //DON'T ITERATE OVER THE EDGES OF THE GRID
+        for(int k = 1; k < zsamples-1; k++)
+            for(int j = 1; j < ysamples-1; j++)
+                for(int i = 1; i < xsamples-1; i++){
+            
+                    double sum = 0;
+                    int count = 0;
+                    
+                    //IF CELL IS *NOT* VALID
+                    if(!old_valid[i + j*xsamples + k*xsamples*ysamples]) {
+                        
+                        if(old_valid[i+1 + j*xsamples + k*xsamples*ysamples]) {
+                            sum += getQuantity(i+1,j,k);
+                            ++count;
+                        }
+                        if(old_valid[i-1 + j*xsamples + k*xsamples*ysamples]) {
+                            sum += getQuantity(i-1,j,k);
+                            ++count;
+                        }
+                        if(old_valid[i + (j+1)*xsamples + k*xsamples*ysamples]) {
+                            sum += getQuantity(i,j+1,k);
+                            ++count;
+                        }
+                        if(old_valid[i + (j-1)*xsamples + k*xsamples*ysamples]) {
+                            sum += getQuantity(i,j-1,k);
+                            ++count;
+                        }
+                        if(old_valid[i + j*xsamples + (k+1)*xsamples*ysamples]) {
+                            sum += getQuantity(i,j,k+1);
+                            ++count;
+                        }
+                        if(old_valid[i + j*xsamples + (k-1)*xsamples*ysamples]) {
+                            sum += getQuantity(i,j,k-1);
+                            ++count;
+                        }
+                        
+                        //If any of neighbour cells were valid,
+                        //assign the cell their average value and tag it as valid
+                        if(count > 0) {
+                            setQuantity(i,j,k) = sum /(double)count;
+                            valid[i + j*xsamples + k*xsamples*ysamples] = true;
+                        }
+                        
+                    }
+                    
+        }
+        
+    }
+    
+    delete valid;
+    delete old_valid;
+   
+};
 
 
 

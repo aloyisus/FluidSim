@@ -15,13 +15,13 @@
 #define vectord vector<double>
 #define symmbandd symm_band<double>
 
-#define TOL double(1.0)
+#define TOL double(0.01)
+
 #define MAXITER 10000
-#define TOL double(0.00001)
-#define MAXITER 1000
 
 
 #include <iostream>
+#include <fstream>
 #include <math.h>
 #include <algorithm>
 

@@ -13,21 +13,51 @@
 #include "matrix.h"
 #include "openvdb/openvdb.h"
 
+#define pi 3.14159265359
+
+class SolidCuboid {
+    
+    vectord centrepos;
+    double w,h,d;
+    double alpha;
+    double omega;
+    
+public:
+    
+    SolidCuboid(double centre0x, double centrey, double centrez, double width, double height, double depth, double alpha, double omega);
+   
+    bool PointIsInside(double i, double j, double k, double time);
+    
+    vectord getVelocity(double x, double y, double z);
+   
+    vectord getNormal(double x, double y, double z, double time);
+    
+    
+};
+
 
 class FluidQuantity {
 
 
     vectord* quantity;
     vectord* buffer;
+    vectord* volume;
+    
     
     int xsamples,ysamples,zsamples;
-    float offsetx, offsety, offsetz;
-    float cellwidth;
+    double offsetx, offsety, offsetz;
+    double cellwidth;
     
     double CatmullRom(double x, double f0, double f1, double f2, double f3);
     
+
+    
+
+
+    
+public:
+
     double InterpolateLinear(double x, double y, double z) const;
-    double InterpolateLinear(double x, double y) const;
     
     double InterpolateCMSlice(double x, double y, int k);
     
@@ -39,38 +69,43 @@ class FluidQuantity {
         
     }
     
-   
+    void CopytoBuffer(){ *buffer = *quantity; }
     
-public:
-
+   
+    int getxSamples(){ return xsamples; };
+    int getySamples(){ return ysamples; };
+    int getzSamples(){ return zsamples; };
+    
+    double getOffsetx(){ return offsetx; };
+    double getOffsety(){ return offsety; };
+    double getOffsetz(){ return offsetz; };
+    
     //Constructor for FluidQuantity
     FluidQuantity(double ofx, double ofy, double ofz, int w, int h, int d, double cw);
-    FluidQuantity(double ofx, double ofy, int w, int h, double cw);
-        
+    
     //Destuctor for FluidQuantity
     ~FluidQuantity();
 
     void swap(){ std::swap(quantity, buffer); }
     
-    void Advect(double timestep, const FluidQuantity& u, const FluidQuantity& v);
     void Advect(double timestep, const FluidQuantity& u, const FluidQuantity& v, const FluidQuantity& w);
     
-    double getQuantity(int i, int j) const{ return quantity->at(i + j*xsamples); }
-    double &setQuantity(int i, int j){ return quantity->at(i + j*xsamples); };
     double getQuantity(int i, int j, int k) const{ return quantity->at(i + j*xsamples + k*xsamples*ysamples); };
     double &setQuantity(int i, int j, int k){ return quantity->at(i + j*xsamples + k*xsamples*ysamples); };
     
-    
-    double getBuffer(int i, int j) const{ return buffer->at(i + j*xsamples); }
-    double &setBuffer(int i, int j){ return buffer->at(i + j*xsamples); };
     double getBuffer(int i, int j, int k) const{ return buffer->at(i + j*xsamples + k*xsamples*ysamples); };
     double &setBuffer(int i, int j, int k){ return buffer->at(i + j*xsamples + k*xsamples*ysamples); };
+    
+    double getVolume(int i, int j, int k) const{ return volume->at(i + j*xsamples + k*xsamples*ysamples); };
+    double &setVolume(int i, int j, int k){ return volume->at(i + j*xsamples + k*xsamples*ysamples); };
     
     double sum() const { return quantity->sum(); }
     double max() const { return quantity->max(); }
    
-    void addEmitter(double x0, double y0, double x1, double y1, double v);
-    void addEmitter(double x0, double y0, double z0, double x1, double y1, double z1, double v);
+    void addEmitter(int x0, int y0, int z0, int x1, int y1, int z1, double v);
+
+    void ExtrapolateVelocity();
+    
    
 };
 
@@ -94,9 +129,6 @@ class FluidGrid {
     int framenumber;
     bool writetocache;
     
-    //2d grid is written to bitmap
-    unsigned char *image;
-    
     //3d grid is written to openvdb container
     openvdb::FloatGrid::Ptr grid;
 
@@ -113,67 +145,78 @@ class FluidGrid {
     FluidQuantity* v;
     FluidQuantity* w;
     
+    
+    //vectors for volumes of u cells, v cells, w cells and d cells
+    vectord* u_volume;
+    vectord* v_volume;
+    vectord* w_volume;
+    vectord* d_volume;
+    
+    
     //Quantity defined on grid eg. density
     FluidQuantity* density;
     
-    void setupA2d();
-    void setupA3d();
+    void BuildLinearSystem();
     
-    void setupRHS2d();
-    void setupRHS3d();
-    
-    void Advect2d();
     void Advect3d();
     
-    void updateVelocities2d();
     void updateVelocities3d();
     
     void Project();
     
     void AddForces();
     
-    void setDeltaT2d();
     void setDeltaT3d();
     
     void WriteToCache();
     
-    double maxDivergence2d() const;
     double maxDivergence3d() const;
     
-    void addDensity(double x, double y, double w, double h, double d, double u, double v);
     void addDensity(double x, double y, double z, double wh, double h, double l, double d, double u, double v, double w);
     
     
     //Getters and Setters for pressure
-    double getPressure(int i, int j) const { return pressure->at(j*nwidth + i); }
-    double& setPressure( int i, int j ){ return pressure->at(j*nwidth + i); }
     double getPressure(int i, int j, int k ) const { return pressure->at(k*nwidth*nheight + j*nwidth + i); }
     double& setPressure( int i, int j, int k ){ return pressure->at(k*nwidth*nheight + j*nwidth + i); }
     
     
     //Getters and Setters for r
-    double getr(int i, int j) const { return r->at(j*nwidth + i); }
-    double& setr( int i, int j ){ return r->at(j*nwidth + i); }
     double getr(int i, int j, int k ) const { return r->at(k*nwidth*nheight + j*nwidth + i); }
     double& setr( int i, int j, int k ){ return r->at(k*nwidth*nheight + j*nwidth + i); }
     
     int getframenumber() const { return framenumber; }
     double getDeltaT() const { return deltaT; }
     
+
+    
 public:
     
     //Constructor for FluidGrid
     FluidGrid(int w, int h, int d, double tstep, double rh);
-    
-    //Constructor for FluidGrid
-    FluidGrid(int w, int h, double tstep, double rh);
     
     //Destuctor for FluidGrid
     ~FluidGrid();
 
     double getSimtime() const { return currtime; }
     
+    double getWidth() const {return nwidth;};
+    double getHeight() const {return nheight;};
+    double getDepth() const {return ndepth;};
+    
+    
+    
     void Update();
+    
+    //DEBUG FOR TESTING solid
+    void SolidDensityUpdate(SolidCuboid& solid);
+    
+    SolidCuboid* solid;
+    
+    void CalculateVolumes();
+    
+    vectord getVelocity(double x, double y, double z);
+    
+    void SetSolidBoundaries();
     
     
 };

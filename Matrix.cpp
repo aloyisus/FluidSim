@@ -451,13 +451,13 @@ vector<ElementType>::vector(int w){
 template <class ElementType>
 vector<ElementType>::vector(int w, ElementType value){
     
-    this->rows = w;
-    this->columns = 1;
+    vector::rows = w;
+    vector::columns = 1;
     
-    this->data = new ElementType [w];
+    vector::data = new ElementType [w];
     
     for(int i=0; i<w; i++)
-        this->data[i] = value;
+        vector::data[i] = value;
     
     
     
@@ -525,7 +525,6 @@ ElementType vector<ElementType>::max(){
     ElementType max = 0;
     
     for(int i=0; i<size; i++)
-        max = std::max(max,this->data[i]);
         max = fmax(max,fabs(this->data[i]));
     
     return max;
@@ -569,7 +568,6 @@ ElementType& vector<ElementType>::at(int r){
 template <class ElementType>
 ElementType vector<ElementType>::operator*(const vector<ElementType>& op2){
     
-    int w = this->rows;
     int w = op2.rows;
     ElementType temp = 0;
     
@@ -589,7 +587,6 @@ ElementType vector<ElementType>::operator*(const vector<ElementType>& op2){
 template <class ElementType>
 vector<ElementType> vector<ElementType>::operator+(const vector<ElementType>& op2){
     
-    int w = this->rows;
     int w = op2.rows;
     vector<ElementType> temp = vector<ElementType>(w);
     
@@ -609,7 +606,6 @@ vector<ElementType> vector<ElementType>::operator+(const vector<ElementType>& op
 template <class ElementType>
 vector<ElementType> vector<ElementType>::operator-(const vector<ElementType>& op2) const{
     
-    int w = this->rows;
     int w = op2.rows;
     vector<ElementType> temp = vector<ElementType>(w);
     
@@ -1898,15 +1894,12 @@ void applyPreconditioner(const symm_band<T1>& A, const diagonal<T1>& Ei, const v
 template <class T1>
 void PCGSolver(const symm_band<T1>& A, const diagonal<T1>& Ei, const vector<T1>& b, vector<T1>& p, T1 tol, int maxIter){
     
-    int size = b.rows;
-    
     p.fill(0);
     
     vector<T1> r = b;
     
     //r = r - A*p;
     
-    vector<T1> z(size);
     vector<T1> z(b.rows);
     applyPreconditioner(A,Ei,r,z);
     
@@ -1914,7 +1907,6 @@ void PCGSolver(const symm_band<T1>& A, const diagonal<T1>& Ei, const vector<T1>&
     
     T1 sigma = z*r;
     
-    T1 maxDiff, alpha, beta, sigmanew;
     T1 maxr, alpha, beta, sigmanew;
     
     int n = 0;
@@ -1929,13 +1921,8 @@ void PCGSolver(const symm_band<T1>& A, const diagonal<T1>& Ei, const vector<T1>&
         
         r = r - alpha*z;
         
-        maxDiff = 0;
-        for(int i=0; i<size; i++)
-            maxDiff = std::max(maxDiff,fabs(r.data[i]));
         maxr = r.max();
         
-        if (maxDiff < tol){
-            printf("solver exiting after reaching required tolerance %f after %d iterations\n", maxDiff, n);
         if (maxr < tol){
             printf("solver exiting after reaching required tolerance %f after %d iterations\n", maxr, n);
             return;
@@ -1956,7 +1943,6 @@ void PCGSolver(const symm_band<T1>& A, const diagonal<T1>& Ei, const vector<T1>&
     
     }
    
-    printf("Max number of %d allowed iterations was exceeded, last maxDiff was %f\n", maxIter,maxDiff);
     printf("Max number of %d allowed iterations was exceeded, last maxDiff was %f\n", maxIter,maxr);
     return;
     
@@ -1966,25 +1952,20 @@ void PCGSolver(const symm_band<T1>& A, const diagonal<T1>& Ei, const vector<T1>&
 template <class T1>
 void CGSolver(const symm_band<T1>& A, const vector<T1>& b, vector<T1>& p, T1 tol, int maxIter){
     
-    int size = b.rows;
-    
     p.fill(0);
     
     vector<T1> r = b;
     
     //r = r - A*p;
     
-    vector<T1> s(size);
     vector<T1> s(b.rows);
     
-    vector<T1> z(size);
     vector<T1> z(b.rows);
 
     s = r;
     
     T1 sigma = r*r;
     
-    T1 maxDiff, alpha, beta, sigmanew;
     T1 maxr, alpha, beta, sigmanew;
     
     int n = 0;
@@ -2002,13 +1983,8 @@ void CGSolver(const symm_band<T1>& A, const vector<T1>& b, vector<T1>& p, T1 tol
         
         r = r - alpha*z;
         
-        maxDiff = 0;
-        for(int i=0; i<size; i++)
-            maxDiff = std::max(maxDiff,double(fabs(r.data[i])));
         maxr = r.max();
         
-        if (maxDiff < tol){
-            printf("solver exiting after reaching required tolerance %f after %d iterations\n", maxDiff, n);
         if (maxr < tol){
             printf("solver exiting after reaching required tolerance %f after %d iterations\n", maxr, n);
             return;
@@ -2024,9 +2000,25 @@ void CGSolver(const symm_band<T1>& A, const vector<T1>& b, vector<T1>& p, T1 tol
         
         n++;
         
+        //DEBUG
+        if(n==1){
+            
+            //Write out r to a binary file on the desktop
+            std::ofstream outbin( "/Users/JohnnyK/Desktop/r_binary.bin", std::ios::binary );
+            outbin.write( (char *) r.data, sizeof( double )*r.rows );
+            outbin.close();
+            
+            
+            //Write out A to a binary file on the desktop
+            std::ofstream outbin1( "/Users/JohnnyK/Desktop/A_binary.bin", std::ios::binary );
+            outbin1.write( (char *) A.data, sizeof( double )*A.rows*A.columns );
+            outbin1.close();
+            
+        }
+        
+        
     }
     
-    printf("Max number of %d allowed iterations was exceeded, last maxDiff was %f\n", maxIter,maxDiff);
     printf("Max number of %d allowed iterations was exceeded, last maxDiff was %f\n", maxIter,maxr);
     return;
     
@@ -2214,6 +2206,7 @@ template class matrix<double>;
 template matrix<double> operator+<double>(const matrix<double>&, const diagonal<double>&);
 template matrix<double> operator*<double>(const matrix<double>&, const diagonal<double>&);
 template matrix<double> operator*(const double & scalar, const matrix<double>& op2);
+template vector<double> operator*<double>(matrix<double> const&, vector<double> const&);
 
 template class diagonal<int>;
 template class diagonal<double>;
