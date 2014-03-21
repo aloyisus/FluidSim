@@ -32,6 +32,7 @@ public:
    
     vectord getNormal(double x, double y, double z, double time);
     
+    void ClosestSurface(double &x, double &y, double &z, double time);
     
 };
 
@@ -88,7 +89,7 @@ public:
 
     void swap(){ std::swap(quantity, buffer); }
     
-    void Advect(double timestep, const FluidQuantity& u, const FluidQuantity& v, const FluidQuantity& w);
+    void Advect(double timestep, const FluidQuantity& u, const FluidQuantity& v, const FluidQuantity& w, SolidCuboid* gridsolid, double time);
     
     double getQuantity(int i, int j, int k) const{ return quantity->at(i + j*xsamples + k*xsamples*ysamples); };
     double &setQuantity(int i, int j, int k){ return quantity->at(i + j*xsamples + k*xsamples*ysamples); };
@@ -120,7 +121,7 @@ class FluidGrid {
     
     double rho;
     
-    int CFLnumber;
+    double CFLnumber;
 
     double currtime;
     double nextframetime;

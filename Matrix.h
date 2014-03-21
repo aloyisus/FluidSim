@@ -15,7 +15,7 @@
 #define vectord vector<double>
 #define symmbandd symm_band<double>
 
-#define TOL double(0.01)
+#define TOL double(0.00001)
 
 #define MAXITER 10000
 
@@ -60,6 +60,8 @@ public:
     base_matrix<ElementType> operator+(const base_matrix<ElementType>& op2);
     base_matrix<ElementType> operator*(const base_matrix<ElementType>& op2);
     base_matrix<ElementType> operator-(const base_matrix<ElementType>& op2);
+    
+
     
     
 protected:
@@ -222,6 +224,8 @@ public:
    
     ElementType max();
     ElementType sum();
+    
+    int getRows() {  return this->rows;  }
     
     
     vector<ElementType> operator+(const vector<ElementType>& op2);

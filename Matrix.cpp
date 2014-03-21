@@ -539,7 +539,7 @@ ElementType vector<ElementType>::sum(){
     ElementType sum = 0;
     
     for(int i=0; i<size; i++)
-        sum += fabs(this->data[i]);
+        sum += this->data[i];
     
     return sum;
     
@@ -1770,6 +1770,9 @@ void applyPreconditioner(const symm_band<T1>& A, const diagonal<T1>& Ei, const v
         //in this range, q(i-1,j) = q(i,j-1) = 0 because they are off-grid
         for(int i=0; i<off1; i++){
             
+            if (A.at(i,0) == 0)
+                continue;
+            
             t = r.data[i];
             
             q.data[i] = t*Ei.data[i];
@@ -1778,6 +1781,9 @@ void applyPreconditioner(const symm_band<T1>& A, const diagonal<T1>& Ei, const v
         //in this range, q(i,j-1) = 0 because they are off-grid
         for(int i=off1; i<off2; i++){
             
+            if (A.at(i,0) == 0)
+                continue;
+            
             t = r.data[i] - A.data[(i-off1)*column+1]*Ei.data[i-off1]*q.data[i-off1];
            
             q.data[i] = t*Ei.data[i];
@@ -1785,6 +1791,9 @@ void applyPreconditioner(const symm_band<T1>& A, const diagonal<T1>& Ei, const v
         }
         //in this range, all q(i-1,j), q(i,j-1) are on-grid and accessible
         for(int i=off2; i<size; i++){
+            
+            if (A.at(i,0) == 0)
+                continue;
             
             t = r.data[i] - A.data[(i-off1)*column+1]*Ei.data[i-off1]*q.data[i-off1] - A.data[(i-off2)*column+2]*Ei.data[i-off2]*q.data[i-off2];
            
@@ -1795,6 +1804,9 @@ void applyPreconditioner(const symm_band<T1>& A, const diagonal<T1>& Ei, const v
         //Next solve L^Tz = q
         for(int i=size-1; i>=size-off1; i--){
             
+            if (A.at(i,0) == 0)
+                continue;
+            
             t = q.data[i];
             
             z.data[i] = t*Ei.data[i];
@@ -1802,12 +1814,18 @@ void applyPreconditioner(const symm_band<T1>& A, const diagonal<T1>& Ei, const v
         }
         for(int i=size-off1-1; i>=size-off2; i--){
             
+            if (A.at(i,0) == 0)
+                continue;
+            
             t = q.data[i] - A.data[i*column+1]*Ei.data[i]*z.data[i+off1];
             
             z.data[i] = t*Ei.data[i];
             
         }
         for(int i=size-off2-1; i>=0; i--){
+            
+            if (A.at(i,0) == 0)
+                continue;
             
             t = q.data[i] - A.data[i*column+1]*Ei.data[i]*z.data[i+off1] - A.data[i*column+2]*Ei.data[i]*z.data[i+off2];
             
@@ -1822,6 +1840,9 @@ void applyPreconditioner(const symm_band<T1>& A, const diagonal<T1>& Ei, const v
         //in this range, q(i-1,j,k) = q(i,j-1,k) = q(i,j,k-1) = 0 because they are off-grid
         for(int i=0; i<off1; i++){
             
+            if (A.at(i,0) == 0)
+                continue;
+            
             t = r.data[i];
             
             q.data[i] = t*Ei.data[i];
@@ -1829,6 +1850,9 @@ void applyPreconditioner(const symm_band<T1>& A, const diagonal<T1>& Ei, const v
         }
         //in this range, q(i,j-1,k) = q(i,j,k-1) = 0 because they are off-grid
         for(int i=off1; i<off2; i++){
+            
+            if (A.at(i,0) == 0)
+                continue;
             
             t = r.data[i] - A.data[(i-off1)*column+1]*Ei.data[i-off1]*q.data[i-off1];
             
@@ -1838,6 +1862,9 @@ void applyPreconditioner(const symm_band<T1>& A, const diagonal<T1>& Ei, const v
         //in this range, q(i,j,k-1) = 0 because they are off-grid
         for(int i=off2; i<off3; i++){
             
+            if (A.at(i,0) == 0)
+                continue;
+            
             t = r.data[i] - A.data[(i-off1)*column+1]*Ei.data[i-off1]*q.data[i-off1] - A.data[(i-off2)*column+2]*Ei.data[i-off2]*q.data[i-off2];
             
             q.data[i] = t*Ei.data[i];
@@ -1845,6 +1872,9 @@ void applyPreconditioner(const symm_band<T1>& A, const diagonal<T1>& Ei, const v
         }
         //in this range, all q(i,j,k) are on-grid and accessible
         for(int i=off3; i<size; i++){
+            
+            if (A.at(i,0) == 0)
+                continue;
             
             t = r.data[i] - A.data[(i-off1)*column+1]*Ei.data[i-off1]*q.data[i-off1] - A.data[(i-off2)*column+2]*Ei.data[i-off2]*q.data[i-off2]
                           - A.data[(i-off3)*column+3]*Ei.data[i-off3]*q.data[i-off3];
@@ -1857,12 +1887,18 @@ void applyPreconditioner(const symm_band<T1>& A, const diagonal<T1>& Ei, const v
         //Next solve L^Tz = q
         for(int i=size-1; i>=size-off1; i--){
             
+            if (A.at(i,0) == 0)
+                continue;
+            
             t = q.data[i];
             
             z.data[i] = t*Ei.data[i];
             
         }
         for(int i=size-off1-1; i>=size-off2; i--){
+            
+            if (A.at(i,0) == 0)
+                continue;
             
             t = q.data[i] - A.data[i*column+1]*Ei.data[i]*z.data[i+off1];
             
@@ -1871,12 +1907,18 @@ void applyPreconditioner(const symm_band<T1>& A, const diagonal<T1>& Ei, const v
         }
         for(int i=size-off2-1; i>=size-off3; i--){
             
+            if (A.at(i,0) == 0)
+                continue;
+            
             t = q.data[i] - A.data[i*column+1]*Ei.data[i]*z.data[i+off1] - A.data[i*column+2]*Ei.data[i]*z.data[i+off2];
             
             z.data[i] = t*Ei.data[i];
             
         }
         for(int i=size-off3-1; i>=0; i--){
+            
+            if (A.at(i,0) == 0)
+                continue;
             
             t = q.data[i] - A.data[i*column+1]*Ei.data[i]*z.data[i+off1] - A.data[i*column+2]*Ei.data[i]*z.data[i+off2]
                           - A.data[i*column+3]*Ei.data[i]*z.data[i+off3];
@@ -2045,6 +2087,8 @@ symm_band<T1> operator*(const T1 & scalar, const symm_band<T1>& op2){
 template <class T1>
 void MIC0precon(const symm_band<T1>& A, diagonal<T1>& Ei){
     
+    Ei.fill(0);
+    
     double tau = 0.97;
     double sigma = 0.25;
     double e;
@@ -2066,6 +2110,10 @@ void MIC0precon(const symm_band<T1>& A, diagonal<T1>& Ei){
             for(int i=0; i<off1; i++){
                 
                 e = A.at(i,0);
+                
+                if (e == 0)
+                    continue;
+                
                 Ei.data[i] = 1.0/sqrt(e);
             }
             
@@ -2073,6 +2121,9 @@ void MIC0precon(const symm_band<T1>& A, diagonal<T1>& Ei){
             for(int i=off1; i<off2; i++){
                 
                 e = A.at(i,0);
+                
+                if (e == 0)
+                    continue;
                 
                 A11 = A.at(i-off1,1);
                 A12 = A.at(i-off1,2);
@@ -2090,6 +2141,9 @@ void MIC0precon(const symm_band<T1>& A, diagonal<T1>& Ei){
             for(int i=off2; i<size; i++){
                 
                 e = A.at(i,0);
+                
+                if (e == 0)
+                    continue;
                 
                 A11 = A.at(i-off1,1);
                 A12 = A.at(i-off1,2);
@@ -2116,6 +2170,10 @@ void MIC0precon(const symm_band<T1>& A, diagonal<T1>& Ei){
             for(int i=0; i<off1; i++){
                 
                 e = A.at(i,0);
+                
+                if (e == 0)
+                    continue;
+                
                 Ei.data[i] = 1.0/sqrt(e);
             }
             
@@ -2123,6 +2181,9 @@ void MIC0precon(const symm_band<T1>& A, diagonal<T1>& Ei){
             for(int i=off1; i<off2; i++){
                 
                 e = A.at(i,0);
+                
+                if (e == 0)
+                    continue;
                 
                 A11 = A.at(i-off1,1);
                 A12 = A.at(i-off1,2);
@@ -2141,6 +2202,9 @@ void MIC0precon(const symm_band<T1>& A, diagonal<T1>& Ei){
             for(int i=off2; i<off3; i++){
                 
                 e = A.at(i,0);
+                
+                if (e == 0)
+                    continue;
                 
                 A11 = A.at(i-off1,1);
                 A12 = A.at(i-off1,2);
@@ -2164,7 +2228,11 @@ void MIC0precon(const symm_band<T1>& A, diagonal<T1>& Ei){
             //in this range, all q(i-1,j,k), q(i,j-1,k) & q(i,j,k-1) are on-grid and accessible
             for(int i=off3; i<size; i++){
                 
+               
                 e = A.at(i,0);
+                
+                if (e == 0)
+                    continue;
                 
                 A11 = A.at(i-off1,1);
                 A12 = A.at(i-off1,2);
