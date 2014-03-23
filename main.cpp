@@ -12,19 +12,20 @@
 
 int main() {
 
-    int w = 80;
-    int h = 128;
-    int d = 80;
+    int w = 100;
+    int h = 80;
+    int d = 100;
     
     double density = 0.1;
     double timestep = 0.02;
     
+    
     FluidGrid* solver = new FluidGrid(w,h,d,timestep,density);
-    SolidCuboid cuboid(40,80,40,64,8,32,0.125,0.1);
+    //solver->setSolid(new Cuboid(solver, w/2,80,d/2,64,8,32,0.0,1.0));
+
+    solver->setSolid(new Sphere(solver, w/2,h/2,d/2,16));
     
-    solver->solid = &cuboid;
-    
-    while (solver->getSimtime() < 10.0) {
+    while (solver->getCurrtime() < 5.0) {
         
         solver->Update();
     }
