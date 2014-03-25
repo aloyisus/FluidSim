@@ -22,9 +22,9 @@ int main() {
     
     FluidGrid* solver = new FluidGrid(w,h,d,timestep,density);
     
-    solver->setSolid(new Cuboid(solver, w/2-10,h/2+10,d/2-10,64,8,16,0.0,0.5));
+    //solver->setSolid(new Cuboid(solver, w/2-10,h/2+10,d/2-10,64,8,16,0.0,0.5));
 
-    //solver->setSolid(new Sphere(solver, w/2,h/2,d/2,16));
+    solver->setSolid(new Sphere(solver, w/2-10,h/2,d/2,16));
     
     while (solver->getCurrtime() < 5.0) {
         

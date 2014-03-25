@@ -12,7 +12,7 @@
 #define round5(n) floor(n * 100000 + 0.5)/100000
 
 
-#define filepath "/Users/JohnnyK/Downloads/Fluids50/"
+#define filepath "/Users/JohnnyK/Downloads/Fluids51/"
 
 
 
@@ -288,7 +288,7 @@ vectord Sphere::getNormal(double x, double y, double z){
     if (mod == 0)
         return rpos;
      
-    rpos = (rpos * 1/mod);
+    rpos = (1/mod)*rpos;
  
     return rpos;
     
@@ -305,7 +305,9 @@ void Sphere::ClosestSurface(double &x, double &y, double &z) {
     r.at(1) = y;
     r.at(2) = z;
     
-    r = centrepos + radius*(getNormal(x,y,z));
+    vectord norm = getNormal(x,y,z);
+    
+    r = centrepos + radius*norm;
 
     x = r.at(0);
     y = r.at(1);
