@@ -12,7 +12,7 @@
 #define round5(n) floor(n * 100000 + 0.5)/100000
 
 
-#define filepath "/Users/JohnnyK/Downloads/Fluids48/"
+#define filepath "/Users/JohnnyK/Downloads/Fluids50/"
 
 
 
@@ -69,7 +69,7 @@ bool Cuboid::PointIsInside(double x, double y, double z){
 
 vectord Cuboid::getVelocity(double x, double y, double z){
     
-    vectord* temp = new vectord(3,0);
+    vectord temp = vectord(3,0);
     
     //vector from axis of rotation (z-axis) to x,y,z
     double rx = x - centrepos.at(0);
@@ -85,18 +85,20 @@ vectord Cuboid::getVelocity(double x, double y, double z){
     normx *= distance*omega;
     normy *= distance*omega;
     
-    temp->at(0) = normx;
-    temp->at(1) = normy;
-    temp->at(2) = 0;
+    temp.at(0) = parentgrid->getCellwidth()*normx;
+    temp.at(1) = parentgrid->getCellwidth()*normy;
+    temp.at(2) = 0;
     
-    return parentgrid->getCellwidth()*(*temp);
+    
+    
+    return temp;
     
 }
 
 
 vectord Cuboid::getNormal(double x, double y, double z){
     
-    vectord* temp = new vectord(3,0);
+    vectord temp = vectord(3,0);
     matrixd transform(3,3,0);
     vectord r = vectord(3,0);
     
@@ -122,44 +124,44 @@ vectord Cuboid::getNormal(double x, double y, double z){
     
     if ((y >= fabs(z)*h/d) && (y >= fabs(x)*h/w)){
         
-        temp->at(0) = 0;
-        temp->at(1) = 1;
-        temp->at(2) = 0;
+        temp.at(0) = 0;
+        temp.at(1) = 1;
+        temp.at(2) = 0;
     
     }
     else if ((y <= fabs(z)*h/d) && (y <= fabs(x)*h/w)){
         
-        temp->at(0) = 0;
-        temp->at(1) = -1;
-        temp->at(2) = 0;
+        temp.at(0) = 0;
+        temp.at(1) = -1;
+        temp.at(2) = 0;
         
     }
     else if ((x >= fabs(z)*w/d) && (x >= fabs(y)*w/h)){
         
-        temp->at(0) = 1;
-        temp->at(1) = 0;
-        temp->at(2) = 0;
+        temp.at(0) = 1;
+        temp.at(1) = 0;
+        temp.at(2) = 0;
         
     }
     else if ((x <= fabs(z)*w/d) && (x <= fabs(y)*w/h)){
         
-        temp->at(0) = -1;
-        temp->at(1) = 0;
-        temp->at(2) = 0;
+        temp.at(0) = -1;
+        temp.at(1) = 0;
+        temp.at(2) = 0;
         
     }
     else if ((z >= fabs(x)*d/w) && (z >= fabs(y)*d/h)){
         
-        temp->at(0) = 0;
-        temp->at(1) = 0;
-        temp->at(2) = 1;
+        temp.at(0) = 0;
+        temp.at(1) = 0;
+        temp.at(2) = 1;
         
     }
     else if ((z <= fabs(x)*d/w) && (z <= fabs(y)*d/h)){
         
-        temp->at(0) = 0;
-        temp->at(1) = 0;
-        temp->at(2) = -1;
+        temp.at(0) = 0;
+        temp.at(1) = 0;
+        temp.at(2) = -1;
         
     }
 
@@ -171,7 +173,9 @@ vectord Cuboid::getNormal(double x, double y, double z){
     transform.at(1,1) = cos(alpha + omega*t);
     transform.at(2,2) = 1.0;
     
-    return transform*(*temp);
+    temp = transform * temp;
+    
+    return temp;
     
     
 }
@@ -262,31 +266,31 @@ bool Sphere::PointIsInside(double x, double y, double z){
 //Sphere never has a component of velocity normal to surface, so return zero
 vectord Sphere::getVelocity(double x, double y, double z){
     
-    vectord* temp = new vectord(3,0);
+    vectord temp = vectord(3,0);
     
-    return *temp;
+    return temp;
     
 }
 
 
 vectord Sphere::getNormal(double x, double y, double z){
     
-    vectord* rpos = new vectord(3,0);
+    vectord rpos = vectord(3,0);
  
-    rpos->at(0) = x;
-    rpos->at(1) = y;
-    rpos->at(2) = z;
+    rpos.at(0) = x;
+    rpos.at(1) = y;
+    rpos.at(2) = z;
      
-    *rpos = (*rpos - centrepos);
+    rpos = (rpos - centrepos);
      
-    double mod = sqrt(*rpos*(*rpos));
+    double mod = sqrt(rpos*rpos);
      
     if (mod == 0)
-        return *rpos;
+        return rpos;
      
-    *rpos = (*rpos * 1/mod);
+    rpos = (rpos * 1/mod);
  
-    return *rpos;
+    return rpos;
     
     
 }
@@ -301,7 +305,7 @@ void Sphere::ClosestSurface(double &x, double &y, double &z) {
     r.at(1) = y;
     r.at(2) = z;
     
-    r = centrepos + radius*getNormal(x,y,z);
+    r = centrepos + radius*(getNormal(x,y,z));
 
     x = r.at(0);
     y = r.at(1);
@@ -585,9 +589,9 @@ void FluidGrid::SetSolidBoundaries(){
     v->CopyQuantitytoBuffer();
     w->CopyQuantitytoBuffer();
     
-    vectord vfluid(3,0);
-    vectord vsolid(3,0);
-    vectord normal(3,0);
+    vectord vfluid = vectord(3,0);
+    vectord vsolid = vectord(3,0);
+    vectord normal = vectord(3,0);
     
     //For cells which have zero volume, set the velocity samples bordering to have zero relative velocity in the
     //direction of the normal to the solid boundary
@@ -757,7 +761,7 @@ void FluidGrid::Update(){
     
     //AddForces();
 
-    addDensity(0.55, 0.1, 0.45, 0.1, 0.05, 0.1, 0.5, 0.0, 1.0, 0.0);
+    addDensity(0.25, 0.1, 0.45, 0.1, 0.05, 0.1, 0.5, 0.0, 1.0, 0.0);
    
     CalculateVolumes();
     
