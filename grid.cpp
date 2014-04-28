@@ -12,7 +12,7 @@
 #define round5(n) floor(n * 100000 + 0.5)/100000
 
 
-#define filepath "/Users/JohnnyK/Downloads/Fluids51/"
+#define filepath "/Users/JohnnyK/Downloads/Fluids4/"
 
 
 
@@ -327,7 +327,7 @@ FluidGrid::FluidGrid(int wh, int ht, int dh, double tstep, double rh){
     nheight = ht;
     ndepth = dh;
     
-    rho = rh;
+    density = rh;
     
     CFLnumber = 5;
     framenumber = 0;
@@ -344,7 +344,8 @@ FluidGrid::FluidGrid(int wh, int ht, int dh, double tstep, double rh){
     u = new FluidQuantity(this, 0,0.5,0.5);
     v = new FluidQuantity(this, 0.5,0,0.5);
     w = new FluidQuantity(this, 0.5,0.5,0);
-    density = new FluidQuantity(this, 0.5,0.5,0.5);
+    smoke = new FluidQuantity(this, 0.5,0.5,0.5);
+    temperature = new FluidQuantity(this, 0.5,0.5,0.5,AMBIENT_TEMPERATURE);
     
     // Initialize the OpenVDB library.  This must be called at least
     // once per program and may safely be called multiple times.
@@ -361,7 +362,8 @@ FluidGrid::~FluidGrid(){
     delete u;
     delete v;
     delete w;
-    delete density;
+    delete smoke;
+    delete temperature;
     delete pressure;
     delete r;
     delete Ei;
@@ -374,7 +376,7 @@ FluidGrid::~FluidGrid(){
 //This builds the system of equations Ap = b
 void FluidGrid::BuildLinearSystem(){
     
-    double Ascale =  deltaT/(rho*cellwidth*cellwidth);
+    double Ascale =  deltaT/(density*cellwidth*cellwidth);
     double rscale = 1.0/cellwidth;
     
     int jnwidth,knwidthnheight;
@@ -412,17 +414,17 @@ void FluidGrid::BuildLinearSystem(){
                                       w->getVolume(i,j,k+1)*w->getQuantity(i,j,k+1) - w->getVolume(i,j,k)*w->getQuantity(i,j,k));
 
 
-                setr(i,j,k) += rscale*((u->getVolume(i+1,j,k)-density->getVolume(i,j,k))*
+                setr(i,j,k) += rscale*((u->getVolume(i+1,j,k)-smoke->getVolume(i,j,k))*
                                       solid->getVelocity(i+1+u->getOffsetx(),j+u->getOffsety(),k+u->getOffsetz()).at(0) -
-                                      (u->getVolume(i,j,k)-density->getVolume(i,j,k))*
+                                      (u->getVolume(i,j,k)-smoke->getVolume(i,j,k))*
                                       solid->getVelocity(i+u->getOffsetx(),j+u->getOffsety(),k+u->getOffsetz()).at(0) +
-                                      (v->getVolume(i,j+1,k)-density->getVolume(i,j,k))*
+                                      (v->getVolume(i,j+1,k)-smoke->getVolume(i,j,k))*
                                       solid->getVelocity(i+v->getOffsetx(),j+1+v->getOffsety(),k+v->getOffsetz()).at(1) -
-                                      (v->getVolume(i,j,k)-density->getVolume(i,j,k))*
+                                      (v->getVolume(i,j,k)-smoke->getVolume(i,j,k))*
                                       solid->getVelocity(i+v->getOffsetx(),j+v->getOffsety(),k+v->getOffsetz()).at(1) +
-                                       (w->getVolume(i,j,k+1)-density->getVolume(i,j,k))*
+                                       (w->getVolume(i,j,k+1)-smoke->getVolume(i,j,k))*
                                       solid->getVelocity(i+w->getOffsetx(),j+w->getOffsety(),k+1+w->getOffsetz()).at(2) -
-                                      (w->getVolume(i,j,k)-density->getVolume(i,j,k))*
+                                      (w->getVolume(i,j,k)-smoke->getVolume(i,j,k))*
                                       solid->getVelocity(i+w->getOffsetx(),j+w->getOffsety(),k+w->getOffsetz()).at(2));
 
                 
@@ -434,7 +436,8 @@ void FluidGrid::BuildLinearSystem(){
 
 void FluidGrid::Advect(){
     
-    density->Advect();
+    temperature->Advect();
+    smoke->Advect();
     u->Advect();
     v->Advect();
     w->Advect();
@@ -442,7 +445,8 @@ void FluidGrid::Advect(){
     u->swap();
     v->swap();
     w->swap();
-    density->swap();
+    smoke->swap();
+    temperature->swap();
     
 }
 
@@ -511,7 +515,7 @@ void FluidGrid::CalculateVolumes(){
     u->CalculateVolumes(supervol);
     v->CalculateVolumes(supervol);
     w->CalculateVolumes(supervol);
-    density->CalculateVolumes(supervol);
+    smoke->CalculateVolumes(supervol);
   
     delete[] supervol;
     
@@ -521,7 +525,7 @@ void FluidGrid::CalculateVolumes(){
 
 void FluidGrid::updateVelocities() {
     
-    double scale = deltaT/(rho*cellwidth);
+    double scale = deltaT/(density*cellwidth);
     
     //We don't touch the samples that are aligned with the edges of the grid here
     for (int k = 0; k < u->getzSamples(); k++)
@@ -557,8 +561,8 @@ void FluidGrid::updateVelocities() {
                 
             }
     
-    
-    density->ExtrapolateVelocity();
+    temperature->ExtrapolateVelocity();
+    smoke->ExtrapolateVelocity();
     u->ExtrapolateVelocity();
     v->ExtrapolateVelocity();
     w->ExtrapolateVelocity();
@@ -601,7 +605,7 @@ void FluidGrid::SetSolidBoundaries(){
         for (int j = 0; j < nheight; j++)
             for (int i = 0; i < nwidth; i++) {
                 
-                if (density->getVolume(i,j,k) == 0)
+                if (smoke->getVolume(i,j,k) == 0)
                 {
                     
 
@@ -696,8 +700,8 @@ double FluidGrid::maxDivergence() const{
 }
 
 
-//Add density and velocity inside a cuboid
-void FluidGrid::addDensity(double x, double y, double z, double wh, double h, double l, double dval, double uval, double vval, double wval) {
+//Add smoke and velocity inside a cuboid
+void FluidGrid::addSmoke(double x, double y, double z, double wh, double h, double l, double dval, double tval) {
     
     double x0 = int(x*nwidth);
     double x1 = int((x+wh)*nwidth);
@@ -706,10 +710,8 @@ void FluidGrid::addDensity(double x, double y, double z, double wh, double h, do
     double z0 = int(z*ndepth);
     double z1 = int((z+l)*ndepth);
     
-    density->addEmitter(x0, y0, z0, x1, y1, z1, dval);
-    u->addEmitter(x0, y0, z0, x1, y1, z1, uval);
-    v->addEmitter(x0, y0, z0, x1, y1, z1, vval);
-    w->addEmitter(x0, y0, z0, x1, y1, z1, wval);
+    temperature->addEmitter(x0, y0, z0, x1, y1, z1, tval);;
+    smoke->addEmitter(x0, y0, z0, x1, y1, z1, dval);
     
 }
 
@@ -754,6 +756,26 @@ void FluidGrid::Project(){
 }
 
 
+
+
+
+void FluidGrid::AddForces(){
+    
+    float gravity = -9.8;
+    float alpha = 1;
+    float beta = 1/AMBIENT_TEMPERATURE;
+    
+    for (int z = 0; z < v->getzSamples(); z++)
+        for (int y = 0; y < v->getySamples(); y++)
+            for (int x = 0; x < v->getxSamples(); x++){
+                
+                v->setQuantity(x,y,z) += getDeltaT() * (alpha*smoke->getQuantity(x,y,z) - beta*(temperature->getQuantity(x,y,z)-AMBIENT_TEMPERATURE)) *gravity;
+                
+            }
+
+}
+
+
 void FluidGrid::Update(){
 
     
@@ -761,9 +783,9 @@ void FluidGrid::Update(){
     
     Advect();
     
-    //AddForces();
+    AddForces();
 
-    addDensity(0.25, 0.1, 0.45, 0.1, 0.05, 0.1, 0.5, 0.0, 1.0, 0.0);
+    addSmoke(0.25, 0.1, 0.45, 0.1, 0.05, 0.1, 0.5, 450);
    
     CalculateVolumes();
     
@@ -798,8 +820,8 @@ void FluidGrid::WriteToCache(){
         for (j=0; j<nheight; j++)
             for (i=0; i<nwidth; i++){
                 
-                //accessor.setValue(ijk, density->getQuantity(i,j,k));
-                accessor.setValue(ijk, density->getQuantity(i,j,k) + 1.0 - density->getVolume(i,j,k));
+                //accessor.setValue(ijk, smoke->getQuantity(i,j,k));
+                accessor.setValue(ijk, smoke->getQuantity(i,j,k) + 1.0 - smoke->getVolume(i,j,k));
     
             }
                 
@@ -808,6 +830,8 @@ void FluidGrid::WriteToCache(){
     
     // Create a VDB file object.
     openvdb::io::File file(outfile);
+    
+    grid->setName("Smoke_Simulation");
     
     // Add the grid pointer to a container.
     openvdb::GridPtrVec grids;
@@ -916,6 +940,41 @@ FluidQuantity::FluidQuantity(FluidGrid* parent, double ofx, double ofy, double o
     quantity = new vectord(xsamples*ysamples*zsamples,0);
     buffer = new vectord(xsamples*ysamples*zsamples,0);
     volume = new vectord(xsamples*ysamples*zsamples,0);
+    
+}
+
+
+//Constructor for FluidQuantity
+FluidQuantity::FluidQuantity(FluidGrid* parent, double ofx, double ofy, double ofz, double initialvalue){
+    
+    offsetx = ofx;
+    offsety = ofy;
+    offsetz = ofz;
+    
+    parentgrid = parent;
+    
+    if (offsetx == 0){
+        xsamples = parent->getWidth()+1;
+    }
+    else{
+        xsamples = parent->getWidth();
+    }
+    if (offsety == 0){
+        ysamples = parent->getHeight()+1;
+    }
+    else{
+        ysamples = parent->getHeight();
+    }
+    if (offsetz == 0){
+        zsamples = parent->getDepth()+1;
+    }
+    else{
+        zsamples = parent->getDepth();
+    }
+    
+    quantity = new vectord(xsamples*ysamples*zsamples,initialvalue);
+    buffer = new vectord(xsamples*ysamples*zsamples,initialvalue);
+    volume = new vectord(xsamples*ysamples*zsamples,initialvalue);
     
 }
 

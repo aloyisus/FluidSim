@@ -14,6 +14,9 @@
 #include "openvdb/openvdb.h"
 
 
+#define AMBIENT_TEMPERATURE 273.0
+
+
 class FluidGrid;
 
 
@@ -111,6 +114,9 @@ public:
     //Constructor for FluidQuantity
     FluidQuantity(FluidGrid* parent, double ofx, double ofy, double ofz);
     
+    //Alternative constructor for FluidQuantity
+    FluidQuantity(FluidGrid* parent, double ofx, double ofy, double ofz, double initialvalue);
+    
     //Destuctor for FluidQuantity
     ~FluidQuantity();
 
@@ -145,6 +151,8 @@ public:
     
     void Advect();
     
+    void AddForces();
+    
     void addEmitter(int x0, int y0, int z0, int x1, int y1, int z1, double v);
 
     void ExtrapolateVelocity();
@@ -165,7 +173,7 @@ class FluidGrid {
     
     double cellwidth;
     
-    double rho;
+    double density;
     
     double CFLnumber;
 
@@ -192,14 +200,9 @@ class FluidGrid {
     FluidQuantity* v;
     FluidQuantity* w;
     
-    //vectors for volumes of u cells, v cells, w cells and d cells
-    vectord* u_volume;
-    vectord* v_volume;
-    vectord* w_volume;
-    vectord* d_volume;
-    
-    //Quantity defined on grid eg. density
-    FluidQuantity* density;
+    //Quantities defined on grid eg. smoke, temperature
+    FluidQuantity* smoke;
+    FluidQuantity* temperature;
     
     Solid* solid;
     
@@ -220,7 +223,7 @@ class FluidGrid {
     void setDeltaT();
     void WriteToCache();
     double maxDivergence() const;
-    void addDensity(double x, double y, double z, double wh, double h, double l, double d, double u, double v, double w);
+    void addSmoke(double x, double y, double z, double wh, double h, double l, double d, double t);
     
     
     

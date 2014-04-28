@@ -15,7 +15,8 @@
 #define vectord vector<double>
 #define symmbandd symm_band<double>
 
-#define TOL double(0.00001)
+//#define TOL double(0.00001)
+#define TOL double(0.001)
 
 #define MAXITER 10000
 
