@@ -15,3 +15,5 @@ The advection step is the semi-Lagrangian method introduced to computer graphics
 I have also added support for curved solid boundaries. So far this is either a cuboid or a sphere, but I'm working on adding an arbitrary number of solids.
 
 The result at each step is written out to an openVDB container, which means we can use the openVDB commandline renderer, or we can import the cache into Houdini to view.
+
+To view some sample renders, go to my vimeo page at https://vimeo.com/johnakelly/videos/
