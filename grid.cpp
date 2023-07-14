@@ -12,8 +12,6 @@
 #define round5(n) floor(n * 100000 + 0.5)/100000
 
 
-#define filepath "/Users/JohnnyK/Downloads/Fluids4/"
-
 
 
 //Constructor for Cuboid class
@@ -317,7 +315,7 @@ void Sphere::ClosestSurface(double &x, double &y, double &z) {
 
 
 //Constructor for FluidGrid 3d
-FluidGrid::FluidGrid(int wh, int ht, int dh, double tstep, double rh){
+FluidGrid::FluidGrid(int wh, int ht, int dh, double tstep, double rh, std::string filepath){
     
     
     //the shortest dimension measures 1 spatial unit, so cellwidth is 1 / no. of cells in shortest dimension
@@ -335,6 +333,8 @@ FluidGrid::FluidGrid(int wh, int ht, int dh, double tstep, double rh){
     framedeltaT = tstep;
     nextframetime = tstep;
     bool writetocache = false;
+
+    outputpath = filepath;
     
     pressure = new vectord(wh*ht*dh);
     r = new vectord(wh*ht*dh);
@@ -826,7 +826,7 @@ void FluidGrid::WriteToCache(){
             }
                 
     char outfile[128];
-    sprintf(outfile, "%sFrame%05d.vdb",filepath, framenumber++);
+    sprintf(outfile, "%sFrame%05d.vdb", outputpath.c_str(), framenumber++);
     
     // Create a VDB file object.
     openvdb::io::File file(outfile);

@@ -6,7 +6,7 @@
 //  Copyright (c) 2014 John Kelly. All rights reserved.
 //
 
-#include "Matrix.h"
+#include "matrix.h"
 
 
 

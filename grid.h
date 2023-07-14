@@ -183,6 +183,8 @@ class FluidGrid {
     double deltaT;
     int framenumber;
     bool writetocache;
+
+    std::string outputpath;
     
     //3d grid is written to openvdb container
     openvdb::FloatGrid::Ptr grid;
@@ -230,7 +232,7 @@ class FluidGrid {
 public:
     
     //Constructor for FluidGrid
-    FluidGrid(int w, int h, int d, double tstep, double rh);
+    FluidGrid(int w, int h, int d, double tstep, double rh, std::string filepath);
     
     //Destuctor for FluidGrid
     ~FluidGrid();
