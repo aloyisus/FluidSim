@@ -1,21 +1,19 @@
-//
-//  grid.h
-//  Fluid
-//
-//  Created by John Kelly on 26/01/2014.
-//  Copyright (c) 2014 John Kelly. All rights reserved.
-//
-
 #ifndef __Fluid__grid__
 #define __Fluid__grid__
 
 #include <iostream>
-#include "matrix.h"
 #include "openvdb/openvdb.h"
+#include <Eigen/Sparse>
+#include <Eigen/Dense>
 
 
 #define AMBIENT_TEMPERATURE 273.0
+#define GRAVITY -9.8;
+#define TOL double(0.001)
+#define MAXITER 10000
 
+
+Eigen::SparseMatrix<double>* fillSymmBandMatrix(int size, int offset1, int offset2, int offset3, double value);
 
 class FluidGrid;
 
@@ -25,17 +23,17 @@ class Solid {
     
 protected:
     
-    vectord centrepos;
+    Eigen::Vector3d centrepos;
     FluidGrid* parentgrid;
-    Solid() : centrepos(3,0) { };
+    // Solid() : centrepos(3,0) { };
     
 public:
     
     virtual bool PointIsInside(double x, double y, double z) = 0;
     
-    virtual vectord getVelocity(double x, double y, double z) = 0;
+    virtual Eigen::Vector3d getVelocity(double x, double y, double z) = 0;
     
-    virtual vectord getNormal(double x, double y, double z) = 0;
+    virtual Eigen::Vector3d getNormal(double x, double y, double z) = 0;
     
     virtual void ClosestSurface(double &x, double &y, double &z) = 0;
     
@@ -58,8 +56,8 @@ public:
     Cuboid(FluidGrid* parent, double centrex, double centrey, double centrez, double width, double height, double depth, double alpha, double omega);
     
     bool PointIsInside(double x, double y, double z);
-    vectord getVelocity(double x, double y, double z);
-    vectord getNormal(double x, double y, double z);
+    Eigen::Vector3d getVelocity(double x, double y, double z);
+    Eigen::Vector3d getNormal(double x, double y, double z);
     void ClosestSurface(double &x, double &y, double &z);
     
 };
@@ -76,8 +74,8 @@ public:
     Sphere(FluidGrid* parent, double centrex, double centrey, double centrez, double radius);
     
     bool PointIsInside(double x, double y, double z);
-    vectord getVelocity(double x, double y, double z);
-    vectord getNormal(double x, double y, double z);
+    Eigen::Vector3d getVelocity(double x, double y, double z);
+    Eigen::Vector3d getNormal(double x, double y, double z);
     void ClosestSurface(double &x, double &y, double &z);
     
 };
@@ -87,10 +85,9 @@ public:
 
 class FluidQuantity {
 
-
-    vectord* quantity;
-    vectord* buffer;
-    vectord* volume;
+    Eigen::VectorXd* quantity;
+    Eigen::VectorXd* buffer;
+    Eigen::VectorXd* volume;
     
     FluidGrid* parentgrid;
     
@@ -111,16 +108,11 @@ class FluidQuantity {
     
 public:
     
-    //Constructor for FluidQuantity
-    FluidQuantity(FluidGrid* parent, double ofx, double ofy, double ofz);
-    
-    //Alternative constructor for FluidQuantity
-    FluidQuantity(FluidGrid* parent, double ofx, double ofy, double ofz, double initialvalue);
+    FluidQuantity(FluidGrid* parent, double ofx, double ofy, double ofz, double value=0);
     
     //Destuctor for FluidQuantity
     ~FluidQuantity();
 
-    
     //Accessors
     int getxSamples(){ return xsamples; };
     int getySamples(){ return ysamples; };
@@ -131,19 +123,17 @@ public:
     double getOffsetz(){ return offsetz; };
     
     
-    double getQuantity(int i, int j, int k) const{ return quantity->at(i + j*xsamples + k*xsamples*ysamples); };
-    double &setQuantity(int i, int j, int k){ return quantity->at(i + j*xsamples + k*xsamples*ysamples); };
+    double getQuantity(int i, int j, int k) const{ return (*quantity)(i + j*xsamples + k*xsamples*ysamples); };
+    double &setQuantity(int i, int j, int k){ return (*quantity)(i + j*xsamples + k*xsamples*ysamples); };
     
-    double getBuffer(int i, int j, int k) const{ return buffer->at(i + j*xsamples + k*xsamples*ysamples); };
-    double &setBuffer(int i, int j, int k){ return buffer->at(i + j*xsamples + k*xsamples*ysamples); };
+    double getBuffer(int i, int j, int k) const{ return (*buffer)(i + j*xsamples + k*xsamples*ysamples); };
+    double &setBuffer(int i, int j, int k){ return (*buffer)(i + j*xsamples + k*xsamples*ysamples); };
     
-    double getVolume(int i, int j, int k) const{ return volume->at(i + j*xsamples + k*xsamples*ysamples); };
-    double &setVolume(int i, int j, int k){ return volume->at(i + j*xsamples + k*xsamples*ysamples); };
-    
-    
+    double getVolume(int i, int j, int k) const{ return (*volume)(i + j*xsamples + k*xsamples*ysamples); };
+    double &setVolume(int i, int j, int k){ return (*volume)(i + j*xsamples + k*xsamples*ysamples); };
     
     double sum() const { return quantity->sum(); }
-    double max() const { return quantity->max(); }
+    double max() const { return quantity->maxCoeff(); }
    
     void CopyQuantitytoBuffer(){ *buffer = *quantity; }
     
@@ -160,8 +150,6 @@ public:
     double InterpolateLinear(double x, double y, double z) const;
     
     void CalculateVolumes(double* supervol);
-    
-   
 };
 
 
@@ -190,12 +178,12 @@ class FluidGrid {
     openvdb::FloatGrid::Ptr grid;
 
     //Matrices for pressure coefficients A and MIC(0) preconditioner Ei
-    symmbandd* A;
-    diagonald* Ei;
+    Eigen::SparseMatrix<double>* A;
+    Eigen::MatrixXd*  Ei;
    
     //vectors for pressure and rhs of matrix equation
-    vectord* pressure;
-    vectord *r; /* Right hand side of pressure solve */
+    Eigen::VectorXd* pressure;
+    Eigen::VectorXd *r; /* Right hand side of pressure solve */
 
     //Velocity components
     FluidQuantity* u;
@@ -207,16 +195,15 @@ class FluidGrid {
     FluidQuantity* temperature;
     
     Solid* solid;
-    
-    
+
     //Accessors
-    double getPressure(int i, int j, int k ) const { return pressure->at(k*nwidth*nheight + j*nwidth + i); }
-    double& setPressure( int i, int j, int k ){ return pressure->at(k*nwidth*nheight + j*nwidth + i); }
-    double getr(int i, int j, int k ) const { return r->at(k*nwidth*nheight + j*nwidth + i); }
-    double& setr( int i, int j, int k ){ return r->at(k*nwidth*nheight + j*nwidth + i); }
+    double getPressure(int i, int j, int k ) const { return (*pressure)(k*nwidth*nheight + j*nwidth + i); }
+    double& setPressure( int i, int j, int k ){ return (*pressure)(k*nwidth*nheight + j*nwidth + i); }
+    double getr(int i, int j, int k ) const { return (*r)(k*nwidth*nheight + j*nwidth + i); }
+    double& setr( int i, int j, int k ){ return (*r)(k*nwidth*nheight + j*nwidth + i); }
     int getframenumber() const { return framenumber; }
     
-
+    void addToA(int cellindex, int offset, double value);
     void BuildLinearSystem();
     void Advect();
     void updateVelocities();
@@ -224,13 +211,10 @@ class FluidGrid {
     void AddForces();
     void setDeltaT();
     void WriteToCache();
-    double maxDivergence() const;
     void addSmoke(double x, double y, double z, double wh, double h, double l, double d, double t);
-    
-    
-    
+
 public:
-    
+
     //Constructor for FluidGrid
     FluidGrid(int w, int h, int d, double tstep, double rh, std::string filepath);
     
@@ -254,9 +238,11 @@ public:
     
     void Update();
     void CalculateVolumes();
-    vectord getVelocity(double x, double y, double z);
+    Eigen::Vector3d getVelocity(double x, double y, double z);
     void SetSolidBoundaries();
+    void SetWallBoundaries();
     
+    double maxDivergence() const;
     
 };
 

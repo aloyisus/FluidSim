@@ -1,10 +1,3 @@
-//Copyright (c) 2014 John Kelly
-//
-//
-//
-//
-
-
 #include <boost/program_options.hpp>
 namespace po = boost::program_options;
 
@@ -50,12 +43,13 @@ int main(int argc, char* argv[]) {
 
     FluidGrid* solver = new FluidGrid(width, height, depth, timestep, density, filepath);
     
-    //solver->setSolid(new Cuboid(solver, w/2-10,h/2+10,d/2-10,64,8,32,0.0,0.25));
+    //solver->setSolid(new Cuboid(solver, width/2-10,height/2+10,depth/2-10,64,8,32,0.0,1.57));
 
     solver->setSolid(new Sphere(solver, width/2-10,height/2,depth/2,16));
-    
+
     while (solver->getCurrtime() < stoptime) {
         solver->Update();
+        // std::cout << "max divergence " << solver->maxDivergence() << std::endl;
     }
     
     return 0;

@@ -2,6 +2,8 @@
 # to 3.8 to support C++17 features.
 cmake_minimum_required(VERSION 3.22)
 
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -ggdb3")
+
 # This should point to the location of FindOpenVDB.cmake on your system
 list(APPEND CMAKE_MODULE_PATH "/usr/local/lib/cmake/OpenVDB/")
 
