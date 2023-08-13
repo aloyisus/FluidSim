@@ -6,6 +6,10 @@ namespace po = boost::program_options;
 
 int main(int argc, char* argv[]) {
 
+    // Initialize the OpenVDB library.  This must be called at least
+    // once per program and may safely be called multiple times.
+    openvdb::initialize();
+
     // Declare the supported options.
     po::options_description desc("Allowed options");
     std::string filepath;
@@ -20,7 +24,7 @@ int main(int argc, char* argv[]) {
         ("width", po::value<int>(&width)->default_value(80), "Width of the volume. Default is 80.")
         ("height", po::value<int>(&height)->default_value(120), "Height of the volume. Default is 120.")
         ("depth", po::value<int>(&depth)->default_value(80), "Depth of the volume. Default is 80.")
-        ("stoptime", po::value<float>(&stoptime)->default_value(2.5), "Time for the simulation to run for.")
+        ("stoptime", po::value<float>(&stoptime)->default_value(5.0), "Time for the simulation to run for.")
         ("density", po::value<double>(&density)->default_value(0.1), "Density of the smoke.")
         ;
 
@@ -45,11 +49,10 @@ int main(int argc, char* argv[]) {
     
     //solver->setSolid(new Cuboid(solver, width/2-10,height/2+10,depth/2-10,64,8,32,0.0,1.57));
 
-    solver->setSolid(new Sphere(solver, width/2-10,height/2,depth/2,16));
+    //solver->setSolid(new Sphere(solver, width/2-10,height/2,depth/2,16));
 
     while (solver->getCurrtime() < stoptime) {
         solver->Update();
-        // std::cout << "max divergence " << solver->maxDivergence() << std::endl;
     }
     
     return 0;

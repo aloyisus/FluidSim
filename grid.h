@@ -5,15 +5,19 @@
 #include "openvdb/openvdb.h"
 #include <Eigen/Sparse>
 #include <Eigen/Dense>
+#include <openvdb/tools/Interpolation.h>
+#include <openvdb/math/ConjGradient.h>
+#include <chrono>
 
+typedef openvdb::math::pcg::SparseStencilMatrix<double, 7> SymmBandMatrix;
+typedef openvdb::math::pcg::IncompleteCholeskyPreconditioner<SymmBandMatrix> CholeskyPrecondMatrix;
 
 #define AMBIENT_TEMPERATURE 273.0
-#define GRAVITY -9.8;
-#define TOL double(0.001)
+#define GRAVITY -9.8
+#define TOL 1e-3
 #define MAXITER 10000
 
 
-Eigen::SparseMatrix<double>* fillSymmBandMatrix(int size, int offset1, int offset2, int offset3, double value);
 
 class FluidGrid;
 
@@ -81,30 +85,25 @@ public:
 };
 
 
-
-
 class FluidQuantity {
 
-    Eigen::VectorXd* quantity;
-    Eigen::VectorXd* buffer;
-    Eigen::VectorXd* volume;
+    openvdb::FloatGrid::Ptr quantity;
+    openvdb::FloatGrid::Ptr buffer;
+    openvdb::FloatGrid::Ptr volume;
     
+    openvdb::FloatGrid::Accessor* q_access;
+    openvdb::FloatGrid::Accessor* b_access;
+    openvdb::FloatGrid::Accessor* v_access;
+
     FluidGrid* parentgrid;
-    
-    int xsamples,ysamples,zsamples;
+
+    openvdb::CoordBBox bbox;
+
+    int xsamples, ysamples, zsamples, numsamples;
     double offsetx, offsety, offsetz;
 
-    
     double CatmullRom(double x, double f0, double f1, double f2, double f3);
     double InterpolateCMSlice(double x, double y, int k);
-    
-    double InterpolateCM(double x, double y, double z);
-    
-    double InterpolateCM(double x, double y){
-        
-        return InterpolateCMSlice(x,y,0);
-        
-    }
     
 public:
     
@@ -122,25 +121,48 @@ public:
     double getOffsety(){ return offsety; };
     double getOffsetz(){ return offsetz; };
     
+    openvdb::math::Transform::Ptr getTransform(){return quantity->transformPtr();};
+
+    inline double getQuantity(int i, int j, int k) const {
+        return q_access->getValue(openvdb::Coord(i, j, k));
+    }
+
+    inline void setQuantity(int i, int j, int k, double value) {
+        q_access->setValue(openvdb::Coord(i, j, k), value);
+    }
     
-    double getQuantity(int i, int j, int k) const{ return (*quantity)(i + j*xsamples + k*xsamples*ysamples); };
-    double &setQuantity(int i, int j, int k){ return (*quantity)(i + j*xsamples + k*xsamples*ysamples); };
+    inline double getBuffer(int i, int j, int k) const {
+        return b_access->getValue(openvdb::Coord(i, j, k));
+    }
+
+    inline void setBuffer(int i, int j, int k, double value) {
+        b_access->setValue(openvdb::Coord(i, j, k), value);
+    }
     
-    double getBuffer(int i, int j, int k) const{ return (*buffer)(i + j*xsamples + k*xsamples*ysamples); };
-    double &setBuffer(int i, int j, int k){ return (*buffer)(i + j*xsamples + k*xsamples*ysamples); };
+    inline double getVolume(int i, int j, int k) const {
+        return v_access->getValue(openvdb::Coord(i, j, k));
+    }
+
+    inline void setVolume(int i, int j, int k, double value) {
+        v_access->setValue(openvdb::Coord(i, j, k), value);
+    }
     
-    double getVolume(int i, int j, int k) const{ return (*volume)(i + j*xsamples + k*xsamples*ysamples); };
-    double &setVolume(int i, int j, int k){ return (*volume)(i + j*xsamples + k*xsamples*ysamples); };
-    
-    double sum() const { return quantity->sum(); }
-    double max() const { return quantity->maxCoeff(); }
+    double sum() const;
+    double max() const;
    
-    void CopyQuantitytoBuffer(){ *buffer = *quantity; }
+    inline void CopyQuantitytoBuffer() {
+        buffer = quantity->deepCopy(); // This will copy the entire grid NOTE WE WERE USING JUST copy() before which is shallow
+        delete b_access;
+        b_access = new openvdb::FloatGrid::Accessor(buffer->getAccessor());
+    }
     
-    void swap(){ std::swap(quantity, buffer); }
+    inline void swap() {
+        std::swap(quantity, buffer);
+        std::swap(q_access, b_access);
+    }
     
     void Advect();
-    
+  
     void AddForces();
     
     void addEmitter(int x0, int y0, int z0, int x1, int y1, int z1, double v);
@@ -148,6 +170,8 @@ public:
     void ExtrapolateVelocity();
     
     double InterpolateLinear(double x, double y, double z) const;
+    double InterpolateCubic(double x, double y, double z) const;    
+    double InterpolateCM(double x, double y, double z);
     
     void CalculateVolumes(double* supervol);
 };
@@ -157,7 +181,7 @@ public:
 
 class FluidGrid {
     
-    int nwidth,nheight,ndepth;
+    int nwidth, nheight, ndepth, ncells;
     
     double cellwidth;
     
@@ -177,13 +201,12 @@ class FluidGrid {
     //3d grid is written to openvdb container
     openvdb::FloatGrid::Ptr grid;
 
-    //Matrices for pressure coefficients A and MIC(0) preconditioner Ei
-    Eigen::SparseMatrix<double>* A;
-    Eigen::MatrixXd*  Ei;
+    //Matrices for pressure coefficients A
+    SymmBandMatrix *A;
    
     //vectors for pressure and rhs of matrix equation
-    Eigen::VectorXd* pressure;
-    Eigen::VectorXd *r; /* Right hand side of pressure solve */
+    SymmBandMatrix::VectorType *pressure;
+    SymmBandMatrix::VectorType *r;
 
     //Velocity components
     FluidQuantity* u;
@@ -197,15 +220,16 @@ class FluidGrid {
     Solid* solid;
 
     //Accessors
-    double getPressure(int i, int j, int k ) const { return (*pressure)(k*nwidth*nheight + j*nwidth + i); }
-    double& setPressure( int i, int j, int k ){ return (*pressure)(k*nwidth*nheight + j*nwidth + i); }
-    double getr(int i, int j, int k ) const { return (*r)(k*nwidth*nheight + j*nwidth + i); }
-    double& setr( int i, int j, int k ){ return (*r)(k*nwidth*nheight + j*nwidth + i); }
+    double getPressure(int i, int j, int k ) const { return (*pressure)[k*nwidth*nheight + j*nwidth + i]; }
+    double& setPressure( int i, int j, int k ){ return (*pressure)[k*nwidth*nheight + j*nwidth + i]; }
+    double getr(int i, int j, int k ) const { return (*r)[k*nwidth*nheight + j*nwidth + i]; }
+    double& setr( int i, int j, int k ){ return (*r)[k*nwidth*nheight + j*nwidth + i]; }
     int getframenumber() const { return framenumber; }
     
     void addToA(int cellindex, int offset, double value);
     void BuildLinearSystem();
     void Advect();
+
     void updateVelocities();
     void Project();
     void AddForces();
@@ -231,6 +255,7 @@ public:
     int getWidth() const {return nwidth;}
     int getHeight() const {return nheight;}
     int getDepth() const {return ndepth;}
+    int getSize() const {return ncells;}
     FluidQuantity* getU() const {return u;}
     FluidQuantity* getV() const {return v;}
     FluidQuantity* getW() const {return w;}
