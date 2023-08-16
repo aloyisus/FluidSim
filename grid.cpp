@@ -1,37 +1,37 @@
 #include "grid.h"
 
 
-#define round5(n) floor(n * 100000 + 0.5)/100000
-
-
 /**
  * @brief Constructs a new Cuboid instance.
  *
  * This constructor initializes a new Cuboid instance with the specified position, dimensions,
- * and other parameters. Note that the position and dimensions are given in terms of cells,
- * not spatial coordinates.
+ * and other parameters. Note that the position and dimensions are given in terms of
+ * world-spatial coordinates.
  *
  * @param parent Pointer to the FluidGrid that this cuboid is a part of.
- * @param centrex X-coordinate of the cuboid's center in cell units.
- * @param centrey Y-coordinate of the cuboid's center in cell units.
- * @param centrez Z-coordinate of the cuboid's center in cell units.
- * @param width Width of the cuboid in cell units.
- * @param height Height of the cuboid in cell units.
- * @param depth Depth of the cuboid in cell units.
+ * @param centrex X-coordinate of the cuboid's center.
+ * @param centrey Y-coordinate of the cuboid's center.
+ * @param centrez Z-coordinate of the cuboid's center.
+ * @param width Width of the cuboid.
+ * @param height Height of the cuboid.
+ * @param depth Depth of the cuboid.
  * @param alph Initial rotation of cuboid in radians.
  * @param omg Angular velocity of cuboid in radians/s.
  */
 Cuboid::Cuboid(FluidGrid* parent, double centrex, double centrey, double centrez, double width, double height, double depth, double alph, double omg) {
     
     parentgrid = parent;
-    
-    centrepos(0) = centrex;
-    centrepos(1) = centrey;
-    centrepos(2) = centrez;
+    auto bbox = parent->getBBox();
 
-    w = width;
-    h = height;
-    d = depth;
+    openvdb::Vec3d size = bbox.max() - bbox.min();
+
+    centrepos(0) = centrex * size[0];
+    centrepos(1) = centrey * size[1];
+    centrepos(2) = centrez * size[2];
+
+    w = width * size[0];
+    h = height * size[1];
+    d = depth * size[2];
     
     alpha = alph;
     omega = omg;
@@ -56,15 +56,18 @@ Cuboid::Cuboid(FluidGrid* parent, double centrex, double centrey, double centrez
  */
 bool Cuboid::PointIsInside(double x, double y, double z){
     
-    Eigen::Vector3d cellpos(x,y,z);
+    openvdb::Vec3d cellpos(x,y,z);
     
     double t = parentgrid->getCurrtime();
     
     bool temp;
-    Eigen::Matrix3d invtransform;
+    openvdb::Mat3d invtransform;
     
     //rotation of -theta about z-axis
-    invtransform.setZero();
+    invtransform(2,0) = 0;
+    invtransform(0,2) = 0;
+    invtransform(2,1) = 0;
+    invtransform(1,2) = 0;
     invtransform(0,0) = cos(alpha + omega*t);
     invtransform(1,0) = -sin(alpha + omega*t);
     invtransform(0,1) = sin(alpha + omega*t);
@@ -97,11 +100,11 @@ bool Cuboid::PointIsInside(double x, double y, double z){
  * @param z The z-coordinate of the point.
  * @return The velocity vector at the given point (x, y, z).
  */
-Eigen::Vector3d Cuboid::getVelocity(double x, double y, double z){
+openvdb::Vec3d Cuboid::getVelocity(openvdb::Vec3d xyz){
 
     //vector from axis of rotation (z-axis) to x,y,z
-    double rx = x - centrepos(0);
-    double ry = y - centrepos(1);
+    double rx = xyz[0] - centrepos(0);
+    double ry = xyz[1] - centrepos(1);
 
     double distance = sqrt(rx*rx + ry*ry);
 
@@ -113,8 +116,7 @@ Eigen::Vector3d Cuboid::getVelocity(double x, double y, double z){
     normx *= distance*omega;
     normy *= distance*omega;
 
-    Eigen::Vector3d temp(normx, normy, 0);
-    temp *=  parentgrid->getCellwidth();
+    openvdb::Vec3d temp(normx, normy, 0);
 
     return temp;
 }
@@ -137,27 +139,29 @@ Eigen::Vector3d Cuboid::getVelocity(double x, double y, double z){
  * @param z The z-coordinate of the point.
  * @return The normal vector at the given point (x, y, z).
  */
-Eigen::Vector3d Cuboid::getNormal(double x, double y, double z){
+openvdb::Vec3d Cuboid::getNormal(openvdb::Vec3d xyz){
 
-    Eigen::Vector3d temp;
-    Eigen::Matrix3d transform;
-    Eigen::Vector3d r(x,y,z);
+    openvdb::Vec3d temp;
+    openvdb::Mat3d transform;
 
     double t = parentgrid->getCurrtime();
 
     //rotation of -theta about z-axis
-    transform.setZero();
+    transform(2,0) = 0;
+    transform(0,2) = 0;
+    transform(2,1) = 0;
+    transform(1,2) = 0;
     transform(0,0) = cos(alpha + omega*t);
     transform(1,0) = -sin(alpha + omega*t);
     transform(0,1) = sin(alpha + omega*t);
     transform(1,1) = cos(alpha + omega*t);
     transform(2,2) = 1.0;
 
-    r = transform*(r - centrepos);
+    xyz = transform*(xyz - centrepos);
 
-    x = r(0);
-    y = r(1);
-    z = r(2);
+    double x = xyz[0];
+    double y = xyz[1];
+    double z = xyz[2];
 
     if ((y >= fabs(z)*h/d) && (y >= fabs(x)*h/w)){
         
@@ -197,6 +201,10 @@ Eigen::Vector3d Cuboid::getNormal(double x, double y, double z){
     }
 
     //rotation of +theta about z-axis
+    transform(2,0) = 0;
+    transform(0,2) = 0;
+    transform(2,1) = 0;
+    transform(1,2) = 0;
     transform(0,0) = cos(alpha + omega*t);
     transform(1,0) = sin(alpha + omega*t);
     transform(0,1) = -sin(alpha + omega*t);
@@ -235,13 +243,16 @@ Eigen::Vector3d Cuboid::getNormal(double x, double y, double z){
  */
 void Cuboid::ClosestSurface(double &x, double &y, double &z) {
 
-    Eigen::Matrix3d transform;
-    Eigen::Vector3d r(x,y,z);
+    openvdb::Mat3d transform;
+    openvdb::Vec3d r(x,y,z);
 
     double t = parentgrid->getCurrtime();
 
     //rotation of -theta about z-axis
-    transform.setZero();
+    transform(2,0) = 0;
+    transform(0,2) = 0;
+    transform(2,1) = 0;
+    transform(1,2) = 0;
     transform(0,0) = cos(alpha + omega*t);
     transform(1,0) = -sin(alpha + omega*t);
     transform(0,1) = sin(alpha + omega*t);
@@ -262,6 +273,10 @@ void Cuboid::ClosestSurface(double &x, double &y, double &z) {
         z = (fabs(z)/z)*d/2;
 
     //rotation of +theta about z-axis
+    transform(2,0) = 0;
+    transform(0,2) = 0;
+    transform(2,1) = 0;
+    transform(1,2) = 0;
     transform(0,0) = cos(alpha + omega*t);
     transform(1,0) = sin(alpha + omega*t);
     transform(0,1) = -sin(alpha + omega*t);
@@ -314,7 +329,7 @@ Sphere::Sphere(FluidGrid* parent, double centrex, double centrey, double centrez
  */
 bool Sphere::PointIsInside(double x, double y, double z){
 
-    Eigen::Vector3d cellpos(x,y,z);
+    openvdb::Vec3d cellpos(x,y,z);
 
     double sqrdistance = (centrepos - cellpos).dot(centrepos - cellpos);
 
@@ -325,15 +340,15 @@ bool Sphere::PointIsInside(double x, double y, double z){
  * @brief Retrieves the velocity of the sphere at the specified point.
  *
  * As the sphere has no velocity component normal to its surface, this function always returns zero
- * regardless of the input position (x, y, z). This is represented by an Eigen::Vector3d containing three zeroes.
+ * regardless of the input position (x, y, z). This is represented by an openvdb::Vec3d containing three zeroes.
  * 
  * @param x The x-coordinate of the point.
  * @param y The y-coordinate of the point.
  * @param z The z-coordinate of the point.
- * @return An Eigen::Vector3d representing the velocity of the sphere at the point, which is always (0,0,0).
+ * @return An openvdb::Vec3d representing the velocity of the sphere at the point, which is always (0,0,0).
  */
-Eigen::Vector3d Sphere::getVelocity(double x, double y, double z){
-    Eigen::Vector3d temp(0,0,0);
+openvdb::Vec3d Sphere::getVelocity(openvdb::Vec3d xyz){
+    openvdb::Vec3d temp(0,0,0);
     return temp;
 }
 
@@ -341,23 +356,23 @@ Eigen::Vector3d Sphere::getVelocity(double x, double y, double z){
  * @brief Retrieves the velocity of the sphere at the specified point.
  *
  * As the sphere has no velocity component normal to its surface, this function always returns zero
- * regardless of the input position (x, y, z). This is represented by an Eigen::Vector3d containing three zeroes.
+ * regardless of the input position (x, y, z). This is represented by an openvdb::Vec3d containing three zeroes.
  * 
  * @param x The x-coordinate of the point.
  * @param y The y-coordinate of the point.
  * @param z The z-coordinate of the point.
- * @return An Eigen::Vector3d representing the velocity of the sphere at the point, which is always (0,0,0).
+ * @return An openvdb::Vec3d representing the velocity of the sphere at the point, which is always (0,0,0).
  */
-Eigen::Vector3d Sphere::getNormal(double x, double y, double z){
-    Eigen::Vector3d rpos(x,y,z);
-    rpos = (rpos - centrepos);
-    double mod = sqrt(rpos.dot(rpos));
+openvdb::Vec3d Sphere::getNormal(openvdb::Vec3d xyz){
+
+    xyz = (xyz - centrepos);
+    double mod = sqrt(xyz.dot(xyz));
 
     if (mod == 0)
-        return rpos;
+        return xyz;
 
-    rpos = (1/mod)*rpos;
-    return rpos;
+    xyz = (1/mod)*xyz;
+    return xyz;
 }
 
 /**
@@ -375,8 +390,8 @@ Eigen::Vector3d Sphere::getNormal(double x, double y, double z){
  */
 void Sphere::ClosestSurface(double &x, double &y, double &z) {
 
-    Eigen::Vector3d r;
-    Eigen::Vector3d norm = getNormal(x,y,z);
+    openvdb::Vec3d r;
+    openvdb::Vec3d norm = getNormal(openvdb::Vec3d(x,y,z));
 
     r = centrepos + radius*norm;
 
@@ -409,6 +424,10 @@ FluidGrid::FluidGrid(int wh, int ht, int dh, double tstep, double rh, std::strin
     nheight = ht;
     ndepth = dh;
     ncells = wh*ht*dh;
+
+    openvdb::Vec3d min(0, 0, 0);
+    openvdb::Vec3d max(nwidth * cellwidth, nheight * cellwidth, ndepth * cellwidth);
+    bbox = openvdb::BBoxd(min, max);
 
     density = rh;
 
@@ -480,6 +499,7 @@ void FluidGrid::addToA(int i, int offset, double value){
     }
 }
 
+// MODIFY THIS ONE.................................JK
 /**
  * @brief Constructs the system of linear equations, Ap = b, to solve for pressure.
  *
@@ -518,29 +538,40 @@ void FluidGrid::BuildLinearSystem(){
             
                 addToA(row, 0, Ascale*w->getVolume(i,j,k+1));
                 addToA(row, 3, -Ascale*w->getVolume(i,j,k+1));
+                
+                // HACK! Set zero diagonal elements to be very small instead
+                // this is an attempt to pass a validation test in openvdb's PCG solver
+                if (!A->getValue(row, row))
+                    A->setValue(row, row, 1e-5);
 
                 (*r)[row] = -rscale*(u->getVolume(i+1,j,k)*u->getQuantity(i+1,j,k) - u->getVolume(i,j,k)*u->getQuantity(i,j,k) +
                                       v->getVolume(i,j+1,k)*v->getQuantity(i,j+1,k) - v->getVolume(i,j,k)*v->getQuantity(i,j,k) +
                                       w->getVolume(i,j,k+1)*w->getQuantity(i,j,k+1) - w->getVolume(i,j,k)*w->getQuantity(i,j,k));
 
                 if (solid != nullptr){
-                    (*r)[row] += rscale*((u->getVolume(i+1,j,k)-smoke->getVolume(i,j,k))*
-                                        solid->getVelocity(i+1+u->getOffsetx(),j+u->getOffsety(),k+u->getOffsetz())(0) -
-                                        (u->getVolume(i,j,k)-smoke->getVolume(i,j,k))*
-                                        solid->getVelocity(i+u->getOffsetx(),j+u->getOffsety(),k+u->getOffsetz())(0) +
-                                        (v->getVolume(i,j+1,k)-smoke->getVolume(i,j,k))*
-                                        solid->getVelocity(i+v->getOffsetx(),j+1+v->getOffsety(),k+v->getOffsetz())(1) -
-                                        (v->getVolume(i,j,k)-smoke->getVolume(i,j,k))*
-                                        solid->getVelocity(i+v->getOffsetx(),j+v->getOffsety(),k+v->getOffsetz())(1) +
-                                        (w->getVolume(i,j,k+1)-smoke->getVolume(i,j,k))*
-                                        solid->getVelocity(i+w->getOffsetx(),j+w->getOffsety(),k+1+w->getOffsetz())(2) -
-                                        (w->getVolume(i,j,k)-smoke->getVolume(i,j,k))*
-                                        solid->getVelocity(i+w->getOffsetx(),j+w->getOffsety(),k+w->getOffsetz())(2));
-                }  
+                    // This is derived from figure 4.3 on page 49 of Bridson's book
+                    (*r)[row] += rscale*((u->getVolume(i+1,j,k) - smoke->getVolume(i,j,k))*
+                                          solid->getVelocity(u->indexToWorld(i+1,j,k))(0) -
+                                         (u->getVolume(i,j,k) - smoke->getVolume(i,j,k))*
+                                          solid->getVelocity(u->indexToWorld(i,j,k))(0) +
 
+                                         (v->getVolume(i,j+1,k) - smoke->getVolume(i,j,k))*
+                                          solid->getVelocity(v->indexToWorld(i,j+1,k))(1) -
+                                         (v->getVolume(i,j,k) - smoke->getVolume(i,j,k))*
+                                          solid->getVelocity(v->indexToWorld(i,j,k))(1) +
 
-                           
-            };
+                                         (w->getVolume(i,j,k+1) - smoke->getVolume(i,j,k))*
+                                          solid->getVelocity(w->indexToWorld(i,j,k+1))(2) -
+                                         (w->getVolume(i,j,k) - smoke->getVolume(i,j,k))*
+                                          solid->getVelocity(w->indexToWorld(i,j,k))(2));
+                }
+    };
+
+    // DEBUG!!!!!!!
+    // Test if A is valid (the 'apply' method raises if a failure bool
+    // which was set in CholeskyPrecondMatrix is false)
+    // CholeskyPrecondMatrix precond(*A);
+    // precond.apply(*r, *r);
 
 }
 
@@ -617,18 +648,18 @@ void FluidQuantity::CalculateVolumes(double* supervol){
  */
 void FluidGrid::CalculateVolumes(){
     double* supervol = new double[ncells*8];
-    bool pointisinside;
+    double pointisinside;
 
     //Perform 2x2x2 supersampling over entire grid, so each ijk cell will be sampled 8 times
     for (int k=0; k<2*ndepth; k++)
         for (int j=0; j<2*nheight; j++)
             for (int i=0; i<2*nwidth; i++){
-                pointisinside = false;
+                pointisinside = 0;
                 if (solid != nullptr)
-                    pointisinside = solid->PointIsInside(0.25+i*0.5, 0.25+j*0.5, 0.25+k*0.5);
+                    if (solid->PointIsInside((0.25+i*0.5)*cellwidth, (0.25+j*0.5)*cellwidth, (0.25+k*0.5)*cellwidth))
+                        pointisinside = 1;
                 supervol[i+j*2*nwidth+k*4*nwidth*nheight] = pointisinside;
             }
-
     u->CalculateVolumes(supervol);
     v->CalculateVolumes(supervol);
     w->CalculateVolumes(supervol);
@@ -661,7 +692,7 @@ void FluidGrid::updateVelocities() {
                 if (u->getVolume(i,j,k) > 0)
                     u->setQuantity(i,j,k, u->getQuantity(i,j,k) - scale*(getPressure(i,j,k) - getPressure(i-1,j,k)));
                 else
-                    u->setQuantity(i,j,k, 0);               
+                    u->setQuantity(i,j,k, 0);
             }
     
     for (int k = 0; k < v->getzSamples(); k++)
@@ -671,7 +702,7 @@ void FluidGrid::updateVelocities() {
                 if (v->getVolume(i,j,k) > 0)
                     v->setQuantity(i,j,k, v->getQuantity(i,j,k) - scale*(getPressure(i,j,k) - getPressure(i,j-1,k)));
                 else
-                    v->setQuantity(i,j,k, 0); 
+                    v->setQuantity(i,j,k, 0);
             }
     
     for (int k = 1; k < w->getzSamples()-1; k++)
@@ -684,8 +715,8 @@ void FluidGrid::updateVelocities() {
                     w->setQuantity(i,j,k, 0);
             }
 
-    temperature->ExtrapolateVelocity();
-    smoke->ExtrapolateVelocity();
+    // temperature->ExtrapolateVelocity();
+    // smoke->ExtrapolateVelocity();
     u->ExtrapolateVelocity();
     v->ExtrapolateVelocity();
     w->ExtrapolateVelocity();
@@ -729,9 +760,12 @@ void FluidGrid::SetWallBoundaries(){
  * @param z The z-coordinate of the point in the grid.
  * @return The interpolated fluid velocity vector at the point (x, y, z).
  */
-Eigen::Vector3d FluidGrid::getVelocity(double x, double y, double z){
+openvdb::Vec3d FluidGrid::getVelocity(openvdb::Vec3d xyz){
 
-    Eigen::Vector3d temp;
+    double x = xyz[0];
+    double y = xyz[1];
+    double z = xyz[2];
+    openvdb::Vec3d temp;
 
     temp(0) = u->InterpolateLinear(x,y,z);
     temp(1) = v->InterpolateLinear(x,y,z);
@@ -766,9 +800,9 @@ void FluidGrid::SetSolidBoundaries(){
     v->CopyQuantitytoBuffer();
     w->CopyQuantitytoBuffer();
 
-    Eigen::Vector3d vfluid;
-    Eigen::Vector3d vsolid;
-    Eigen::Vector3d normal;
+    openvdb::Vec3d vfluid;
+    openvdb::Vec3d vsolid;
+    openvdb::Vec3d normal;
     
     //For cells which have zero volume, set the velocity samples bordering to have zero relative velocity in the
     //direction of the normal to the solid boundary
@@ -777,39 +811,39 @@ void FluidGrid::SetSolidBoundaries(){
             for (int i = 0; i < nwidth; i++) {
                 if (smoke->getVolume(i,j,k) == 0)
                 {
-                    vsolid = solid->getVelocity(i+u->getOffsetx(),j+u->getOffsety(),k+u->getOffsetz());
-                    vfluid = getVelocity(i+u->getOffsetx(),j+u->getOffsety(),k+u->getOffsetz());
-                    normal = solid->getNormal(i+u->getOffsetx(),j+u->getOffsety(),k+u->getOffsetz());
+                    vsolid = solid->getVelocity(u->indexToWorld(i,j,k));
+                    vfluid = getVelocity(u->indexToWorld(i,j,k));
+                    normal = solid->getNormal(u->indexToWorld(i,j,k));
                     
                     u->setBuffer(i,j,k, (vfluid - (vfluid - vsolid).dot(normal)*normal)(0));
                     
-                    vsolid = solid->getVelocity(i+1+u->getOffsetx(),j+u->getOffsety(),k+u->getOffsetz());
-                    vfluid = getVelocity(i+1+u->getOffsetx(),j+u->getOffsety(),k+u->getOffsetz());
-                    normal = solid->getNormal(i+1+u->getOffsetx(),j+u->getOffsety(),k+u->getOffsetz());
+                    vsolid = solid->getVelocity(u->indexToWorld(i+1,j,k));
+                    vfluid = getVelocity(u->indexToWorld(i+1,j,k));
+                    normal = solid->getNormal(u->indexToWorld(i+1,j,k));
                     
                     u->setBuffer(i+1,j,k, (vfluid - (vfluid - vsolid).dot(normal)*normal)(0));
                     
-                    vsolid = solid->getVelocity(i+v->getOffsetx(),j+v->getOffsety(),k+v->getOffsetz());
-                    vfluid = getVelocity(i+v->getOffsetx(),j+v->getOffsety(),k+v->getOffsetz());
-                    normal = solid->getNormal(i+v->getOffsetx(),j+v->getOffsety(),k+v->getOffsetz());
+                    vsolid = solid->getVelocity(v->indexToWorld(i,j,k));
+                    vfluid = getVelocity(v->indexToWorld(i,j,k));
+                    normal = solid->getNormal(v->indexToWorld(i,j,k));
                     
                     v->setBuffer(i,j,k, (vfluid - (vfluid - vsolid).dot(normal)*normal)(1));
                     
-                    vsolid = solid->getVelocity(i+v->getOffsetx(),j+1+v->getOffsety(),k+v->getOffsetz());
-                    vfluid = getVelocity(i+v->getOffsetx(),j+1+v->getOffsety(),k+v->getOffsetz());
-                    normal = solid->getNormal(i+v->getOffsetx(),j+1+v->getOffsety(),k+v->getOffsetz());
+                    vsolid = solid->getVelocity(v->indexToWorld(i,j+1,k));
+                    vfluid = getVelocity(v->indexToWorld(i,j+1,k));
+                    normal = solid->getNormal(v->indexToWorld(i,j+1,k));
                     
                     v->setBuffer(i,j+1,k, (vfluid - (vfluid - vsolid).dot(normal)*normal)(1));
                     
-                    vsolid = solid->getVelocity(i+w->getOffsetx(),j+w->getOffsety(),k+w->getOffsetz());
-                    vfluid = getVelocity(i+w->getOffsetx(),j+w->getOffsety(),k+w->getOffsetz());
-                    normal = solid->getNormal(i+w->getOffsetx(),j+w->getOffsety(),k+w->getOffsetz());
+                    vsolid = solid->getVelocity(w->indexToWorld(i,j,k));
+                    vfluid = getVelocity(w->indexToWorld(i,j,k));
+                    normal = solid->getNormal(w->indexToWorld(i,j,k));
                     
                     w->setBuffer(i,j,k, (vfluid - (vfluid - vsolid).dot(normal)*normal)(2));
                     
-                    vsolid = solid->getVelocity(i+w->getOffsetx(),j+w->getOffsety(),k+1+w->getOffsetz());
-                    vfluid = getVelocity(i+w->getOffsetx(),j+w->getOffsety(),k+1+w->getOffsetz());
-                    normal = solid->getNormal(i+w->getOffsetx(),j+w->getOffsety(),k+1+w->getOffsetz());
+                    vsolid = solid->getVelocity(w->indexToWorld(i,j,k+1));
+                    vfluid = getVelocity(w->indexToWorld(i,j,k+1));
+                    normal = solid->getNormal(w->indexToWorld(i,j,k+1));
                     
                     w->setBuffer(i,j,k+1, (vfluid - (vfluid - vsolid).dot(normal)*normal)(2));
                 }
@@ -882,6 +916,31 @@ void FluidGrid::addSmoke(double x, double y, double z, double wh, double h, doub
     temperature->addEmitter(x0, y0, z0, x1, y1, z1, temperature_value);;
     smoke->addEmitter(x0, y0, z0, x1, y1, z1, density_value);
 
+}
+
+/**
+ * Sets the FluidQuantity value within a specified rectangular volume in the grid.
+ *
+ * This function assigns a new value to each point inside a given volume specified by 
+ * the rectangular region from (x0, y0, z0) to (x1, y1, z1). The value is only assigned 
+ * if the absolute value of the current fluid quantity at the grid point is less than the 
+ * absolute value of 'v'. The function also ensures that the rectangular region lies within 
+ * the valid boundaries of the fluid grid.
+ *
+ * @param x0 The starting x-coordinate of the rectangular volume.
+ * @param y0 The starting y-coordinate of the rectangular volume.
+ * @param z0 The starting z-coordinate of the rectangular volume.
+ * @param x1 The ending x-coordinate of the rectangular volume.
+ * @param y1 The ending y-coordinate of the rectangular volume.
+ * @param z1 The ending z-coordinate of the rectangular volume.
+ * @param value  The fluid quantity value to assign within the given volume.
+ */
+void FluidQuantity::addEmitter(int x0, int y0, int z0, int x1, int y1, int z1, double value) {
+    for (int z = std::max(z0, 0); z < std::min(z1, zsamples); z++)
+        for (int y = std::max(y0, 0); y < std::min(y1, ysamples); y++)
+            for (int x = std::max(x0, 0); x < std::min(x1, xsamples); x++)
+                if (fabs(getQuantity(x,y,z)) < fabs(value))
+                    setQuantity(x,y,z, value);
 }
 
 /**
@@ -958,8 +1017,7 @@ void FluidQuantity::Advect(){
             for (int i=0; i<xsamples; i++){
 
                 // use index to world here for x,y,z
-                auto ijk = openvdb::Coord(i, j, k);
-                openvdb::Vec3d xyz = xform->indexToWorld(ijk);
+                openvdb::Vec3d xyz = xform->indexToWorld(openvdb::Coord(i,j,k));
                 x = xyz[0];
                 y = xyz[1];
                 z = xyz[2];
@@ -987,13 +1045,7 @@ void FluidQuantity::Advect(){
                         gridsolid->ClosestSurface(x, y, z);
                 }
 
-                if (xyz != openvdb::Vec3d(x,y,z)){
-                    setBuffer(i,j,k, InterpolateCubic(x,y,z));
-                    //setBuffer(i,j,k, InterpolateCM(x,y,z));
-                }
-                else{
-                    setBuffer(i,j,k, getQuantity(i,j,k));
-                }
+                setBuffer(i,j,k, InterpolateCubic(x,y,z));
     }  
 }
 
@@ -1027,7 +1079,7 @@ void FluidGrid::Advect(){
  *
  * This function first solves the pressure Poisson equation Ap = r, where A is the pressure coefficient matrix, 
  * p is the pressure vector, and r is the divergence vector. The solver used is the Preconditioned Conjugate Gradient (PCG) 
- * method, but other solvers such as the Conjugate Gradient or Gauss-Seidel could be used as well.
+ * method.
  * The solution of the equation provides the pressure field that ensures the fluid is incompressible.
  * After the pressure field is calculated, the function calls the updateVelocities() function to update the velocity fields 
  * (u, v, w) based on the newly calculated pressure field. This ensures the fluid motion follows the Navier-Stokes equations.
@@ -1035,7 +1087,6 @@ void FluidGrid::Advect(){
 void FluidGrid::Project(){
 
     //DEBUG
-    //pressure_before = new SymmBandMatrix::VectorType(wh*ht*dh);
     auto pressure_before(*pressure);
 
     CholeskyPrecondMatrix precond(*A);
@@ -1045,6 +1096,7 @@ void FluidGrid::Project(){
     state.relativeError = TOL; // Tolerance for relative error
 
     openvdb::util::NullInterrupter interrupter;
+    std::cout << "Solving..." << std::endl;
     auto result = openvdb::math::pcg::solve(*A, *r, *pressure, precond, interrupter, state);
 
     if (!result.success)
@@ -1082,8 +1134,7 @@ void FluidGrid::AddForces(){
             for (int i = 0; i < v->getxSamples(); i++){
 
                 // use index to world here for x,y,z
-                auto ijk = openvdb::Coord(i, j, k);
-                openvdb::Vec3d xyz = xform->indexToWorld(ijk);
+                openvdb::Vec3d xyz = xform->indexToWorld(openvdb::Coord(i,j,k));
                 x = xyz[0];
                 y = xyz[1];
                 z = xyz[2];
@@ -1154,13 +1205,11 @@ void FluidGrid::Update(){
     end = std::chrono::high_resolution_clock::now();
     elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
     std::cout << "BuildLinearSystem time (seconds) = " << elapsed.count() * 1e-9 << std::endl;
-    std::cout << "maxdiv before: " << maxDivergence() << std::endl;
     begin = std::chrono::high_resolution_clock::now();
     Project();
     end = std::chrono::high_resolution_clock::now();
     elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
     std::cout << "Project time (seconds) = " << elapsed.count() * 1e-9 << std::endl;
-    std::cout << "maxdiv after: " << maxDivergence() << std::endl;
 
     currtime += deltaT;
 
@@ -1202,8 +1251,11 @@ void FluidGrid::WriteToCache(){
     for (k=0; k<ndepth; k++)
         for (j=0; j<nheight; j++)
             for (i=0; i<nwidth; i++){
-                // densityAccessor.setValue(ijk, smoke->getQuantity(i,j,k) + 1.0 - smoke->getVolume(i,j,k));
-                densityAccessor.setValue(ijk, smoke->getQuantity(i,j,k));
+                // The following line will make the solid visible by filling solid-occupied cells
+                densityAccessor.setValue(ijk, smoke->getQuantity(i,j,k) + 1.0 - smoke->getVolume(i,j,k));
+
+                // uncommenting this line will make the solid invisible
+                // densityAccessor.setValue(ijk, smoke->getQuantity(i,j,k));
                 temperatureAccessor.setValue(ijk, temperature->getQuantity(i,j,k));
             }
 
@@ -1302,6 +1354,12 @@ FluidQuantity::~FluidQuantity() {
     delete v_access;
 }
 
+openvdb::Vec3d FluidQuantity::indexToWorld(int i, int j, int k){
+    auto xform = getTransform();
+    openvdb::Vec3d xyz = xform->indexToWorld(openvdb::Coord(i, j, k));
+    return xyz;
+}
+
 /**
  * Interpolates the quantity value at a given position using trilinear interpolation.
  *
@@ -1321,13 +1379,16 @@ double FluidQuantity::InterpolateLinear(double x, double y, double z) const
     // Create a linear interpolator
     openvdb::tools::GridSampler<openvdb::FloatGrid, openvdb::tools::BoxSampler> interpolator(*quantity);
 
-    // DEBUG
-    // auto q_transform = quantity->transformPtr();
-    // std::cout << "voxelSize = " << q_transform->voxelSize() << std::endl;
-    // std::cout << q_transform->worldToIndex(openvdb::Vec3d(x, y, z)) << std::endl;
+    auto xyz = openvdb::Vec3d(x, y, z);
+    auto bbox = parentgrid->getBBox();
+
+    // Clamp position to the bbox
+    for (int i = 0; i < 3; i++) {
+        xyz[i] = std::max(bbox.min()[i], std::min(xyz[i], bbox.max()[i]));
+    }
 
     // Interpolate the value at the given position
-    double result = interpolator.wsSample(openvdb::Vec3d(x, y, z));
+    double result = interpolator.wsSample(xyz);
 
     return result;
 }
@@ -1337,167 +1398,18 @@ double FluidQuantity::InterpolateCubic(double x, double y, double z) const
     // Create a cubic interpolator
     openvdb::tools::GridSampler<openvdb::FloatGrid, openvdb::tools::QuadraticSampler> interpolator(*quantity);
 
-    // DEBUG
-    // auto q_transform = quantity->transformPtr();
-    // std::cout << "voxelSize = " << q_transform->voxelSize() << std::endl;
-    // std::cout << q_transform->worldToIndex(openvdb::Vec3d(x, y, z)) << std::endl;
+    auto xyz = openvdb::Vec3d(x, y, z);
+    auto bbox = parentgrid->getBBox();
+
+    // Clamp position to the bbox
+    for (int i = 0; i < 3; i++) {
+        xyz[i] = std::max(bbox.min()[i], std::min(xyz[i], bbox.max()[i]));
+    }
 
     // Interpolate the value at the given position
-    double result = interpolator.wsSample(openvdb::Vec3d(x, y, z));
+    double result = interpolator.wsSample(xyz);
 
     return result;
-}
-
-/**
- * Evaluates the Catmull-Rom spline at a given position.
- *
- * This function uses the Catmull-Rom spline, which is a type of interpolating 
- * spline defined by four points, to estimate the value at the specified position.
- * The Catmull-Rom spline is a cubic polynomial that ensures a smooth transition
- * between the points.
- *
- * @param x The position where the Catmull-Rom spline is to be evaluated.
- * @param f0 The value of the function at the first of the four points.
- * @param f1 The value of the function at the second of the four points.
- * @param f2 The value of the function at the third of the four points.
- * @param f3 The value of the function at the fourth of the four points.
- * @return The evaluated value of the Catmull-Rom spline at the given position.
- */
-double FluidQuantity::CatmullRom(double x, double f0, double f1, double f2, double f3){
-    double x2 = x*x;
-    double x3 = x*x2;
-
-    return f0*(    -0.5*x +     x2 - 0.5*x3)
-    + f1*(1          - 2.5*x2 + 1.5*x3)
-    + f2*(     0.5*x +   2*x2 - 1.5*x3)
-    + f3*(            -0.5*x2 + 0.5*x3);
-}
-
-/**
- * Performs 3D interpolation of a fluid quantity using Catmull-Rom splines.
- *
- * This function first transforms the z-coordinate into the correct dimensionless cell space for the given offset. 
- * It then clamps the z-coordinate to ensure it's within the grid. 
- * The method subsequently calls the `InterpolateCMSlice` method on four slices of the grid (determined by the z-coordinate)
- * to get interpolated values in 2D. Finally, it performs another Catmull-Rom interpolation along the z-direction using these 
- * interpolated 2D values to obtain the final interpolated 3D value.
- *
- * @param x The x-coordinate of the position to interpolate.
- * @param y The y-coordinate of the position to interpolate.
- * @param z The z-coordinate of the position to interpolate.
- * @return The interpolated value at the given position (x, y, z).
- */
-double FluidQuantity::InterpolateCM(double x, double y, double z){
-    //transform into the correct dimensionless cellspace for the given offset
-    double cz = z-offsetz;
-
-    //Clamp z to grid
-    cz = fmax(fmin(cz,zsamples-1.0),0.0);
-
-    //Get grid co-ordinates of z: k such that k is closer to the origin than z
-    int k = int(cz);
-
-    //get relative cell z co-ordinates
-    cz -= k;
-
-    //Need to interpolate on four 2d grids nearest x,y,z
-    //making sure to clamp so they lie on the grid in terms of depth
-    int mink = std::max(k-1,0);
-    int maxk = std::min(k+2,zsamples-1);
-
-    //Use InterpolateCMSlice function to interpolate on each of four 2d grids
-    double grid1 = InterpolateCMSlice(x, y, mink);
-    double grid2 = InterpolateCMSlice(x, y, k);
-    double grid3 = InterpolateCMSlice(x, y, k+1);
-    double grid4 = InterpolateCMSlice(x, y, maxk);
-
-    //Finally, interpolate from 4 points above:
-    return CatmullRom(cz, grid1, grid2, grid3, grid4);
-}
-
-/**
- * Uses the Catmull-Rom spline to perform a 2D interpolation on a specified slice of the grid.
- *
- * This method first transforms the input coordinates into the dimensionless cell space 
- * according to the offsets. The input coordinates are then clamped to the grid. 
- * The Catmull-Rom interpolation is then performed in two stages: 
- * first, it's performed along the x-direction for four rows, 
- * and then the results of these interpolations are used for another 
- * Catmull-Rom interpolation along the y-direction.
- *
- * @param x The x-coordinate of the position to interpolate.
- * @param y The y-coordinate of the position to interpolate.
- * @param k The z-index of the slice to interpolate on.
- * @return The interpolated value at the given position in the specified slice.
- */
-double FluidQuantity::InterpolateCMSlice(double x, double y, int k){
-    //transform into the correct dimensionless cellspace for the given offset
-    double cx = x-offsetx;
-    double cy = y-offsety;
-
-    //Clamp x,y to grid
-    cx = fmax(fmin(cx,xsamples-1.0),0.0);
-    cy = fmax(fmin(cy,ysamples-1.0),0.0);
-
-    //Get grid co-ordinates of x,y: i,j such that i,j is closer to the origin than x,y
-    int i = int(cx);
-    int j = int(cy);
-
-    //get relative cell co-ordinates
-    cx -= i;
-    cy -= j;
-
-    /* i,j are the co-ordinates of p11 in the 2d grid. We want to find sixteen points below,
-       while carefully handling grid boundaries so we are never outside the grid
-     
-     p00   p10   p20   p30
-     
-     p01   p11   p21   p31
-     
-     p02   p12   p22   p32
-     
-     p03   p13   p23   p33
-     */
-
-    //now clamp the i,j of the twelve points around the central square so they lie on the grid
-    int minj = std::max(j-1,0);
-    int maxj = std::min(j+2,ysamples-1);
-    int mini = std::max(i-1,0);
-    int maxi = std::min(i+2,xsamples-1);
-
-    //Use CatmullRom interpolation to get four more points, one for each row
-    double row1 = CatmullRom(cx, getQuantity(mini,minj,k), getQuantity(i,minj,k), getQuantity(i+1,minj,k), getQuantity(maxi,minj,k));
-    double row2 = CatmullRom(cx, getQuantity(mini,j,k), getQuantity(i,j,k), getQuantity(i+1,j,k), getQuantity(maxi,j,k));
-    double row3 = CatmullRom(cx, getQuantity(mini,j+1,k), getQuantity(i,j+1,k), getQuantity(i+1,j+1,k), getQuantity(maxi,j+1,k));
-    double row4 = CatmullRom(cx, getQuantity(mini,maxj,k), getQuantity(i,maxj,k), getQuantity(i+1,maxj,k), getQuantity(maxi,maxj,k));
-    
-    //Finally, interpolate from 4 points above:
-    return CatmullRom(cy, row1, row2, row3, row4);
-}
-
-/**
- * Sets the FluidQuantity value within a specified rectangular volume in the grid.
- *
- * This function assigns a new value to each point inside a given volume specified by 
- * the rectangular region from (x0, y0, z0) to (x1, y1, z1). The value is only assigned 
- * if the absolute value of the current fluid quantity at the grid point is less than the 
- * absolute value of 'v'. The function also ensures that the rectangular region lies within 
- * the valid boundaries of the fluid grid.
- *
- * @param x0 The starting x-coordinate of the rectangular volume.
- * @param y0 The starting y-coordinate of the rectangular volume.
- * @param z0 The starting z-coordinate of the rectangular volume.
- * @param x1 The ending x-coordinate of the rectangular volume.
- * @param y1 The ending y-coordinate of the rectangular volume.
- * @param z1 The ending z-coordinate of the rectangular volume.
- * @param value  The fluid quantity value to assign within the given volume.
- */
-void FluidQuantity::addEmitter(int x0, int y0, int z0, int x1, int y1, int z1, double value) {
-    for (int z = std::max(z0, 0); z < std::min(z1, zsamples); z++)
-        for (int y = std::max(y0, 0); y < std::min(y1, ysamples); y++)
-            for (int x = std::max(x0, 0); x < std::min(x1, xsamples); x++)
-                if (fabs(getQuantity(x,y,z)) < fabs(value))
-                    setQuantity(x,y,z, value);
 }
 
 double FluidQuantity::sum() const {

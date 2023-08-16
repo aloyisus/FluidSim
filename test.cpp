@@ -81,21 +81,25 @@ TEST(GridTests, QuantityTests) {
     EXPECT_EQ(v->InterpolateLinear(0.375,0.625,0.875), 57);
     EXPECT_EQ(v->InterpolateLinear(0.5,0.5,0.5), 31.5);
 
-    EXPECT_EQ(v->InterpolateCM(0.5,0.5,0.5), 0);
-    EXPECT_EQ(v->InterpolateCM(3.5,3.5,3.5), 63);
-    EXPECT_EQ(v->InterpolateCM(2.5,2.5,2.5), 42);
-    EXPECT_EQ(v->InterpolateCM(1.5,2.5,3.5), 57);
-    EXPECT_EQ(v->InterpolateCM(2,2,2), 31.5);
-
     EXPECT_EQ(v->InterpolateCubic(0.125,0.125,0.125), 0);
     EXPECT_EQ(v->InterpolateCubic(0.875,0.875,0.875), 63);
     EXPECT_EQ(v->InterpolateCubic(0.625,0.625,0.625), 42);
     EXPECT_EQ(v->InterpolateCubic(0.375,0.625,0.875), 57);
     EXPECT_EQ(v->InterpolateCubic(0.5,0.5,0.5), 31.5);
 
-    delete solver;
-    delete u;
-    delete v;
+    FluidGrid* solver2 = new FluidGrid(80, 80, 100, 0.02, 0.1, filepath);
+    solver2->setSolid(new Cuboid(solver, 0.5, 0.5, 0.5, 0.7, 0.1, 0.33, 0.0, 0.0));
+
+    EXPECT_EQ(solver2->getBBox().min(), openvdb::Vec3d(0,0,0));
+    EXPECT_EQ(solver2->getBBox().max(), openvdb::Vec3d(1,1,1.25));
+    EXPECT_EQ(solver2->getSolid()->PointIsInside(0.5,0.5,0.5), true);
+    EXPECT_EQ(solver2->getSolid()->PointIsInside(0.0,0.0,0.0), false);
+    EXPECT_EQ(solver2->getSolid()->PointIsInside(0.8,0.52,0.65), true);
+    
+    EXPECT_EQ(solver2->getU()->indexToWorld(32,32,40), openvdb::Vec3d(0.5,0.5,0.6));
+
+
+
 }
 
 
@@ -191,7 +195,6 @@ TEST(OpenVDBTests, FloatGrid) {
     // Adjust grid transform to match desired grid spacing and offset
     openvdb::math::Transform::Ptr q_transform = openvdb::math::Transform::createLinearTransform(0.33);
 
-
     q_transform->preTranslate(openvdb::Vec3d(0.5, 0.5, 0.5));
     q->setTransform(q_transform);
 
@@ -211,6 +214,15 @@ TEST(OpenVDBTests, FloatGrid) {
 
     auto xyz = openvdb::Vec3d(10,11,12);
     EXPECT_EQ(xyz, openvdb::Vec3d(10,11,12));   
+
+    openvdb::Vec3d centrepos;
+    centrepos(0) = 10;
+    centrepos(1) = 11;
+    centrepos(2) = 77.9;
+
+    openvdb::Vec3d pos(5,6,2);
+
+    EXPECT_EQ(centrepos - pos, openvdb::Vec3d(5, 5, 75.9));
 
 }
 

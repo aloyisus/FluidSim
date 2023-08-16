@@ -1,12 +1,11 @@
 #ifndef __Fluid__grid__
 #define __Fluid__grid__
 
-#include <iostream>
 #include "openvdb/openvdb.h"
-#include <Eigen/Sparse>
-#include <Eigen/Dense>
 #include <openvdb/tools/Interpolation.h>
 #include <openvdb/math/ConjGradient.h>
+
+#include <iostream>
 #include <chrono>
 
 typedef openvdb::math::pcg::SparseStencilMatrix<double, 7> SymmBandMatrix;
@@ -14,8 +13,8 @@ typedef openvdb::math::pcg::IncompleteCholeskyPreconditioner<SymmBandMatrix> Cho
 
 #define AMBIENT_TEMPERATURE 273.0
 #define GRAVITY -9.8
-#define TOL 1e-3
-#define MAXITER 10000
+#define TOL 1e-5
+#define MAXITER 100000
 
 
 
@@ -27,7 +26,7 @@ class Solid {
     
 protected:
     
-    Eigen::Vector3d centrepos;
+    openvdb::Vec3d centrepos;
     FluidGrid* parentgrid;
     // Solid() : centrepos(3,0) { };
     
@@ -35,17 +34,13 @@ public:
     
     virtual bool PointIsInside(double x, double y, double z) = 0;
     
-    virtual Eigen::Vector3d getVelocity(double x, double y, double z) = 0;
+    virtual openvdb::Vec3d getVelocity(openvdb::Vec3d xyz) = 0;
     
-    virtual Eigen::Vector3d getNormal(double x, double y, double z) = 0;
+    virtual openvdb::Vec3d getNormal(openvdb::Vec3d xyz) = 0;
     
     virtual void ClosestSurface(double &x, double &y, double &z) = 0;
-    
-    
-    
+
 };
-
-
 
 
 class Cuboid : public Solid {
@@ -60,13 +55,11 @@ public:
     Cuboid(FluidGrid* parent, double centrex, double centrey, double centrez, double width, double height, double depth, double alpha, double omega);
     
     bool PointIsInside(double x, double y, double z);
-    Eigen::Vector3d getVelocity(double x, double y, double z);
-    Eigen::Vector3d getNormal(double x, double y, double z);
+    openvdb::Vec3d getVelocity(openvdb::Vec3d xyz);
+    openvdb::Vec3d getNormal(openvdb::Vec3d xyz);
     void ClosestSurface(double &x, double &y, double &z);
     
 };
-
-
 
 
 class Sphere : public Solid {
@@ -78,8 +71,8 @@ public:
     Sphere(FluidGrid* parent, double centrex, double centrey, double centrez, double radius);
     
     bool PointIsInside(double x, double y, double z);
-    Eigen::Vector3d getVelocity(double x, double y, double z);
-    Eigen::Vector3d getNormal(double x, double y, double z);
+    openvdb::Vec3d getVelocity(openvdb::Vec3d xyz);
+    openvdb::Vec3d getNormal(openvdb::Vec3d xyz);
     void ClosestSurface(double &x, double &y, double &z);
     
 };
@@ -96,8 +89,6 @@ class FluidQuantity {
     openvdb::FloatGrid::Accessor* v_access;
 
     FluidGrid* parentgrid;
-
-    openvdb::CoordBBox bbox;
 
     int xsamples, ysamples, zsamples, numsamples;
     double offsetx, offsety, offsetz;
@@ -161,6 +152,8 @@ public:
         std::swap(q_access, b_access);
     }
     
+    openvdb::Vec3d indexToWorld(int i, int j, int k);
+
     void Advect();
   
     void AddForces();
@@ -175,8 +168,6 @@ public:
     
     void CalculateVolumes(double* supervol);
 };
-
-
 
 
 class FluidGrid {
@@ -195,6 +186,8 @@ class FluidGrid {
     double deltaT;
     int framenumber;
     bool writetocache;
+
+    openvdb::BBoxd bbox;
 
     std::string outputpath;
     
@@ -244,11 +237,11 @@ public:
     
     //Destuctor for FluidGrid
     ~FluidGrid();
-
     
     //Accessors
     double getDeltaT() const { return deltaT; }
     double getCellwidth() const { return cellwidth; }
+    openvdb::BBoxd getBBox() const {return bbox;}
     double getCurrtime() const {return currtime;}
     Solid* getSolid() const {return solid;}
     void setSolid(Solid* obj) {solid = obj;}
@@ -263,14 +256,13 @@ public:
     
     void Update();
     void CalculateVolumes();
-    Eigen::Vector3d getVelocity(double x, double y, double z);
+    openvdb::Vec3d getVelocity(openvdb::Vec3d xyz);
     void SetSolidBoundaries();
     void SetWallBoundaries();
     
     double maxDivergence() const;
     
 };
-
 
 
 #endif /* defined(__Fluid__grid__) */

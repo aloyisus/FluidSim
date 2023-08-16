@@ -47,9 +47,7 @@ int main(int argc, char* argv[]) {
 
     FluidGrid* solver = new FluidGrid(width, height, depth, timestep, density, filepath);
     
-    //solver->setSolid(new Cuboid(solver, width/2-10,height/2+10,depth/2-10,64,8,32,0.0,1.57));
-
-    //solver->setSolid(new Sphere(solver, width/2-10,height/2,depth/2,16));
+    solver->setSolid(new Cuboid(solver, 0.5, 0.5, 0.5, 0.7, 0.1, 0.3, 0.0, 1.57));
 
     while (solver->getCurrtime() < stoptime) {
         solver->Update();
