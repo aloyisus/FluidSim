@@ -21,61 +21,7 @@ typedef openvdb::math::pcg::IncompleteCholeskyPreconditioner<SymmBandMatrix> Cho
 class FluidGrid;
 
 
-//Abstract solid class
-class Solid {
-    
-protected:
-    
-    openvdb::Vec3d centrepos;
-    FluidGrid* parentgrid;
-    // Solid() : centrepos(3,0) { };
-    
-public:
-    
-    virtual bool PointIsInside(double x, double y, double z) = 0;
-    
-    virtual openvdb::Vec3d getVelocity(openvdb::Vec3d xyz) = 0;
-    
-    virtual openvdb::Vec3d getNormal(openvdb::Vec3d xyz) = 0;
-    
-    virtual void ClosestSurface(double &x, double &y, double &z) = 0;
 
-};
-
-
-class Cuboid : public Solid {
-    
-
-    double w,h,d;
-    double alpha;
-    double omega;
-    
-public:
-    
-    Cuboid(FluidGrid* parent, double centrex, double centrey, double centrez, double width, double height, double depth, double alpha, double omega);
-    
-    bool PointIsInside(double x, double y, double z);
-    openvdb::Vec3d getVelocity(openvdb::Vec3d xyz);
-    openvdb::Vec3d getNormal(openvdb::Vec3d xyz);
-    void ClosestSurface(double &x, double &y, double &z);
-    
-};
-
-
-class Sphere : public Solid {
-
-    double radius;
-    
-public:
-    
-    Sphere(FluidGrid* parent, double centrex, double centrey, double centrez, double radius);
-    
-    bool PointIsInside(double x, double y, double z);
-    openvdb::Vec3d getVelocity(openvdb::Vec3d xyz);
-    openvdb::Vec3d getNormal(openvdb::Vec3d xyz);
-    void ClosestSurface(double &x, double &y, double &z);
-    
-};
 
 
 class FluidQuantity {
@@ -92,9 +38,6 @@ class FluidQuantity {
 
     int xsamples, ysamples, zsamples, numsamples;
     double offsetx, offsety, offsetz;
-
-    double CatmullRom(double x, double f0, double f1, double f2, double f3);
-    double InterpolateCMSlice(double x, double y, int k);
     
 public:
     
@@ -112,42 +55,43 @@ public:
     double getOffsety(){ return offsety; };
     double getOffsetz(){ return offsetz; };
     
-    openvdb::math::Transform::Ptr getTransform(){return quantity->transformPtr();};
+    openvdb::math::Transform::Ptr getTransform() const {return quantity->transformPtr();}
 
-    inline double getQuantity(int i, int j, int k) const {
+    double getQuantity(int i, int j, int k) const {
         return q_access->getValue(openvdb::Coord(i, j, k));
     }
 
-    inline void setQuantity(int i, int j, int k, double value) {
+    void setQuantity(int i, int j, int k, double value) {
         q_access->setValue(openvdb::Coord(i, j, k), value);
     }
     
-    inline double getBuffer(int i, int j, int k) const {
+    double getBuffer(int i, int j, int k) const {
         return b_access->getValue(openvdb::Coord(i, j, k));
     }
 
-    inline void setBuffer(int i, int j, int k, double value) {
+    void setBuffer(int i, int j, int k, double value) {
         b_access->setValue(openvdb::Coord(i, j, k), value);
     }
     
-    inline double getVolume(int i, int j, int k) const {
+    double getVolume(int i, int j, int k) const {
         return v_access->getValue(openvdb::Coord(i, j, k));
     }
 
-    inline void setVolume(int i, int j, int k, double value) {
+    void setVolume(int i, int j, int k, double value) {
         v_access->setValue(openvdb::Coord(i, j, k), value);
     }
     
     double sum() const;
     double max() const;
+    double sumVolumes() const;
    
-    inline void CopyQuantitytoBuffer() {
+    void CopyQuantitytoBuffer() {
         buffer = quantity->deepCopy(); // This will copy the entire grid NOTE WE WERE USING JUST copy() before which is shallow
         delete b_access;
         b_access = new openvdb::FloatGrid::Accessor(buffer->getAccessor());
     }
     
-    inline void swap() {
+    void swap() {
         std::swap(quantity, buffer);
         std::swap(q_access, b_access);
     }
@@ -159,19 +103,20 @@ public:
     void AddForces();
     
     void addEmitter(int x0, int y0, int z0, int x1, int y1, int z1, double v);
+   
+    double InterpolateLinear(openvdb::Vec3d xyz) const;
+    double InterpolateQuadratic(openvdb::Vec3d xyz) const;    
+    double InterpolateCubic(openvdb::Vec3d xyz) const;
 
-    void ExtrapolateVelocity();
+    void CalculateVolumes(double*);
     
-    double InterpolateLinear(double x, double y, double z) const;
-    double InterpolateCubic(double x, double y, double z) const;    
-    double InterpolateCM(double x, double y, double z);
-    
-    void CalculateVolumes(double* supervol);
 };
 
 
 class FluidGrid {
     
+    public:
+
     int nwidth, nheight, ndepth, ncells;
     
     double cellwidth;
@@ -210,8 +155,6 @@ class FluidGrid {
     FluidQuantity* smoke;
     FluidQuantity* temperature;
     
-    Solid* solid;
-
     //Accessors
     double getPressure(int i, int j, int k ) const { return (*pressure)[k*nwidth*nheight + j*nwidth + i]; }
     double& setPressure( int i, int j, int k ){ return (*pressure)[k*nwidth*nheight + j*nwidth + i]; }
@@ -229,8 +172,9 @@ class FluidGrid {
     void setDeltaT();
     void WriteToCache();
     void addSmoke(double x, double y, double z, double wh, double h, double l, double d, double t);
+    void CalculateVolumes();
 
-public:
+// public:
 
     //Constructor for FluidGrid
     FluidGrid(int w, int h, int d, double tstep, double rh, std::string filepath);
@@ -243,8 +187,6 @@ public:
     double getCellwidth() const { return cellwidth; }
     openvdb::BBoxd getBBox() const {return bbox;}
     double getCurrtime() const {return currtime;}
-    Solid* getSolid() const {return solid;}
-    void setSolid(Solid* obj) {solid = obj;}
     int getWidth() const {return nwidth;}
     int getHeight() const {return nheight;}
     int getDepth() const {return ndepth;}
@@ -255,14 +197,18 @@ public:
     
     
     void Update();
-    void CalculateVolumes();
-    openvdb::Vec3d getVelocity(openvdb::Vec3d xyz);
-    void SetSolidBoundaries();
     void SetWallBoundaries();
     
     double maxDivergence() const;
+
+    void averagevoxelsaround(openvdb::Vec3d ijk);
     
 };
 
+bool isMatrixSymmetric(const SymmBandMatrix&, SymmBandMatrix::ValueType);
+bool rowsSumToZero(const SymmBandMatrix&, SymmBandMatrix::ValueType);
+
+template <typename SparseMatrixType>
+void clearSparseMatrix(SparseMatrixType* matrix);
 
 #endif /* defined(__Fluid__grid__) */

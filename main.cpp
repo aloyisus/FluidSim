@@ -18,6 +18,7 @@ int main(int argc, char* argv[]) {
     int depth;
     float stoptime;
     double density;
+    bool solid = false;
     desc.add_options()
         ("help", "produce help message")
         ("output", po::value<std::string>(&filepath), "path to vdb output")
@@ -26,6 +27,7 @@ int main(int argc, char* argv[]) {
         ("depth", po::value<int>(&depth)->default_value(80), "Depth of the volume. Default is 80.")
         ("stoptime", po::value<float>(&stoptime)->default_value(5.0), "Time for the simulation to run for.")
         ("density", po::value<double>(&density)->default_value(0.1), "Density of the smoke.")
+        ("solid,s", po::bool_switch(&solid), "add a solid.");
         ;
 
     po::variables_map vm;
@@ -47,8 +49,6 @@ int main(int argc, char* argv[]) {
 
     FluidGrid* solver = new FluidGrid(width, height, depth, timestep, density, filepath);
     
-    solver->setSolid(new Cuboid(solver, 0.5, 0.5, 0.5, 0.7, 0.1, 0.3, 0.0, 1.57));
-
     while (solver->getCurrtime() < stoptime) {
         solver->Update();
     }
