@@ -14,7 +14,7 @@ template <typename T> int sign(T val) {
 struct CubicSampler
 {
     static const char* name() { return "cubic"; }
-    static int radius() { return 1; }
+    static int radius() { return 2; }
     static bool mipmap() { return true; }
     static bool consistent() { return false; }
     static bool staggered() { return false; }
@@ -29,6 +29,23 @@ struct CubicSampler
 
     template<class ValueT, size_t N>
     static inline ValueT tricubicInterpolation(ValueT (&data)[N][N][N], const Vec3R& uvw);
+};
+
+struct StaggeredCubicSampler
+{
+    static const char* name() { return "cubic"; }
+    static int radius() { return 2; }
+    static bool mipmap() { return true; }
+    static bool consistent() { return false; }
+    static bool staggered() { return true; }
+    static size_t order() { return 3; }
+
+    template<class TreeT>
+    static bool sample(const TreeT& inTree, const Vec3R& inCoord,
+                       typename TreeT::ValueType& result);
+
+    template<class TreeT>
+    static typename TreeT::ValueType sample(const TreeT& inTree, const Vec3R& inCoord);
 };
 
 
@@ -88,6 +105,41 @@ T monotonicCubicInterpolant(const T &f1, const T &f2, const T &f3, const T &f4, 
     T t1 = t;
     T t2 = t1 * t1;
     T t3 = t2 * t1;
+
+    return a3 * t3 + a2 * t2 + a1 * t1 + a0;
+}
+
+//! Monotonic cubic interpolation on 3-vectors
+// References:
+// http://en.wikipedia.org/wiki/Monotone_cubic_interpolation
+// http://en.wikipedia.org/wiki/Cubic_Hermite_spline
+template <class T>
+T monotonicCubicInterpolantVec(const T &f1, const T &f2, 
+                                    const T &f3, const T &f4, 
+                                    double t)
+{
+    using ValueType = typename T::ValueType;
+
+    T d_k     = ValueType(.5) * (f3 - f1);
+    T d_k1    = ValueType(.5) * (f4 - f2);
+    T delta_k = f3 - f2;
+
+    // This bit comes from Fix monotonic cubic interpolation #69 https://github.com/imageworks/Field3D/issues/69
+    for (int i = 0; i < 3; i++) {
+        if (delta_k[i] == static_cast<ValueType>(0) || (sign(d_k[i]) != sign(delta_k[i]) || sign(d_k1[i]) != sign(delta_k[i]))) {
+            d_k[i] = static_cast<ValueType>(0);
+            d_k1[i]= static_cast<ValueType>(0);
+        }
+    }
+
+    T a0 = f2;
+    T a1 = d_k;
+    T a2 = (delta_k * ValueType(3)) - (d_k * ValueType(2)) - d_k1;
+    T a3 = d_k + d_k1 - (delta_k * ValueType(2));
+
+    ValueType t1 = t;
+    ValueType t2 = t1 * t1;
+    ValueType t3 = t2 * t1;
 
     return a3 * t3 + a2 * t2 + a1 * t1 + a0;
 }
@@ -164,10 +216,59 @@ CubicSampler::tricubicInterpolation(ValueT (&data)[N][N][N], const Vec3R& uvw)
     return monotonicCubicInterpolant(vx[0],vx[1],vx[2],vx[3],uvw[0]);
 }
 
+//////////////////////////////////////// StaggeredCubicSampler
+
+
+template<class TreeT>
+inline bool
+StaggeredCubicSampler::sample(const TreeT& inTree, const Vec3R& inCoord,
+                            typename TreeT::ValueType& result)
+{
+    using ValueType = typename TreeT::ValueType;
+
+    ValueType tempX, tempY, tempZ;
+    tempX = tempY = tempZ = zeroVal<ValueType>();
+    bool active = false;
+
+    active = CubicSampler::sample<TreeT>(inTree, inCoord + Vec3R(0.5, 0, 0), tempX) || active;
+    active = CubicSampler::sample<TreeT>(inTree, inCoord + Vec3R(0, 0.5, 0), tempY) || active;
+    active = CubicSampler::sample<TreeT>(inTree, inCoord + Vec3R(0, 0, 0.5), tempZ) || active;
+
+    result.x() = tempX.x();
+    result.y() = tempY.y();
+    result.z() = tempZ.z();
+
+    return active;
+}
+
+template<class TreeT>
+inline typename TreeT::ValueType
+StaggeredCubicSampler::sample(const TreeT& inTree, const Vec3R& inCoord)
+{
+    using ValueT = typename TreeT::ValueType;
+
+    const ValueT tempX = CubicSampler::sample<TreeT>(inTree, inCoord + Vec3R(0.5, 0.0, 0.0));
+    const ValueT tempY = CubicSampler::sample<TreeT>(inTree, inCoord + Vec3R(0.0, 0.5, 0.0));
+    const ValueT tempZ = CubicSampler::sample<TreeT>(inTree, inCoord + Vec3R(0.0, 0.0, 0.5));
+
+    return ValueT(tempX.x(), tempY.y(), tempZ.z());
+}
+
+template<>
+inline
+openvdb::Vec3d monotonicCubicInterpolant<openvdb::Vec3d>(const openvdb::Vec3d &f1, const openvdb::Vec3d &f2,
+                                   const openvdb::Vec3d &f3, const openvdb::Vec3d &f4, double t)
+{
+  return monotonicCubicInterpolantVec(f1, f2, f3, f4, t);
+}
+
 }
 
 
 namespace openvdb::OPENVDB_VERSION_NAME::tools {
     template<>
     struct Sampler<3, false> : public fluidsim::tools::CubicSampler {};
+
+    template <>
+    struct Sampler<3, true> : public fluidsim::tools::StaggeredCubicSampler {};
 }

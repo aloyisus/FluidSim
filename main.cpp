@@ -23,7 +23,7 @@ int main(int argc, char* argv[]) {
         ("help", "produce help message")
         ("output", po::value<std::string>(&filepath), "path to vdb output")
         ("width", po::value<int>(&width)->default_value(80), "Width of the volume. Default is 80.")
-        ("height", po::value<int>(&height)->default_value(120), "Height of the volume. Default is 120.")
+        ("height", po::value<int>(&height)->default_value(80), "Height of the volume. Default is 80.")
         ("depth", po::value<int>(&depth)->default_value(80), "Depth of the volume. Default is 80.")
         ("stoptime", po::value<float>(&stoptime)->default_value(5.0), "Time for the simulation to run for.")
         ("density", po::value<double>(&density)->default_value(0.1), "Density of the smoke.")

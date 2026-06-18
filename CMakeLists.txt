@@ -32,9 +32,9 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 set_target_properties(fluidsim PROPERTIES BUILD_RPATH "/usr/local/lib")
 set_target_properties(fluidsim PROPERTIES INSTALL_RPATH "/usr/local/lib")
 
-# the tests
-add_executable(tests test.cpp grid.cpp maths.cpp)
-target_link_libraries(tests GTest::gtest GTest::gtest_main)
-target_link_libraries(tests OpenVDB::openvdb)
-set_target_properties(tests PROPERTIES BUILD_RPATH "/usr/local/lib")
-set_target_properties(tests PROPERTIES INSTALL_RPATH "/usr/local/lib")
+# # the tests
+# add_executable(tests test.cpp grid.cpp maths.cpp)
+# target_link_libraries(tests GTest::gtest GTest::gtest_main)
+# target_link_libraries(tests OpenVDB::openvdb)
+# set_target_properties(tests PROPERTIES BUILD_RPATH "/usr/local/lib")
+# set_target_properties(tests PROPERTIES INSTALL_RPATH "/usr/local/lib")

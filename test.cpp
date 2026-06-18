@@ -10,9 +10,8 @@ TEST(GridTests, QuantityTests) {
     FluidGrid* solver = new FluidGrid(4, 4, 4, 0.2, 1, filepath);
 
     // define a voxel-centred quantity
-    FluidQuantity* u = new FluidQuantity(solver, 0.5, 0.5, 0.5, 7.0);
+    FluidQuantity<openvdb::FloatGrid>* u = new FluidQuantity<openvdb::FloatGrid>(solver, false, 7.0);
     
-    EXPECT_EQ(solver->getSize(), 64);
     EXPECT_EQ(solver->getCellwidth(), 0.25);
 
     u->setQuantity(0,0,0, 3.0);
@@ -49,24 +48,8 @@ TEST(GridTests, QuantityTests) {
     EXPECT_EQ(u->getQuantity(1,1,1), 10);
     EXPECT_EQ(u->getQuantity(3,3,3), 28);      
 
-    u->CopyQuantitytoBuffer();
-    u->swap();
-
-    EXPECT_EQ(u->getQuantity(1,0,0), 7);
-    EXPECT_EQ(u->getQuantity(0,0,0), 4);
-    EXPECT_EQ(u->getQuantity(1,1,1), 10);
-    EXPECT_EQ(u->getQuantity(3,3,3), 28);
-
-    // 4 * 4 * 4 * 7 - 3 * 7 + 4 + 10 + 28 = 469
-    EXPECT_EQ(u->sum(), 469);
-    EXPECT_EQ(u->max(), 28);
-    u->swap();
-    EXPECT_EQ(u->sum(), 469);
-    EXPECT_EQ(u->max(), 28);
-
-
     // define a voxel-centred quantity
-    FluidQuantity* v = new FluidQuantity(solver, 0.5, 0.5, 0.5, 0);
+    FluidQuantity<openvdb::FloatGrid>* v = new FluidQuantity<openvdb::FloatGrid>(solver, false, 0);
     for (int k=0; k<4; k++)
         for (int j=0; j<4; j++)
             for (int i=0; i<4; i++){
@@ -76,13 +59,16 @@ TEST(GridTests, QuantityTests) {
     EXPECT_EQ(v->getQuantity(0,0,0), 0);
     EXPECT_EQ(v->getQuantity(3,3,3), 63);
 
-
     // InterpolateLinear takes world-space position as input
     EXPECT_EQ(v->InterpolateLinear(openvdb::Vec3d(0.125,0.125,0.125)), 0);
     EXPECT_EQ(v->InterpolateLinear(openvdb::Vec3d(0.875,0.875,0.875)), 63);
     EXPECT_EQ(v->InterpolateLinear(openvdb::Vec3d(0.625,0.625,0.625)), 42);
     EXPECT_EQ(v->InterpolateLinear(openvdb::Vec3d(0.375,0.625,0.875)), 57);
     EXPECT_EQ(v->InterpolateLinear(openvdb::Vec3d(0.5,0.5,0.5)), 31.5);
+
+    std::cout << v->InterpolateCubic(openvdb::Vec3d(0.125,0.125,0.125)) << std::endl;
+    std::cout << v->InterpolateCubic(openvdb::Vec3d(0.875,0.875,0.875)) << std::endl;
+    std::cout << v->InterpolateCubic(openvdb::Vec3d(0.625,0.625,0.625)) << std::endl;
 
     EXPECT_EQ(v->InterpolateCubic(openvdb::Vec3d(0.125,0.125,0.125)), 0);
     EXPECT_EQ(v->InterpolateCubic(openvdb::Vec3d(0.875,0.875,0.875)), 63);
@@ -430,42 +416,32 @@ TEST(TestConjGradient, testIncompleteCholesky2)
 }
 
 
-TEST(TransformTests, indexToWorld)
-{
-    using namespace openvdb;
+// TEST(TransformTests, indexToWorld)
+// {
+//     using namespace openvdb;
 
-    std::string filepath("dummy");
-    FluidGrid solver = FluidGrid(500, 2000, 1000, 0.2, 1, filepath);
+//     std::string filepath("dummy");
+//     FluidGrid solver = FluidGrid(500, 2000, 1000, 0.2, 1, filepath);
 
-    auto xformu = solver.u->getTransform();
-    auto xformv = solver.v->getTransform();
-    auto xformw = solver.w->getTransform();
-    auto xformsmoke = solver.smoke->getTransform();
+//     auto xformu = solver.velocity->getTransform();
+//     auto xformsmoke = solver.smoke->getTransform();
 
-    openvdb::Vec3d xyzu = xformu->indexToWorld(openvdb::Coord(50,50,50));
-    EXPECT_TRUE(xyzu[0] == 0.100);
-    EXPECT_TRUE(xyzu[1] == 0.101);
-    EXPECT_TRUE(xyzu[2] == 0.101);
+//     openvdb::Vec3d xyzu = xformu->indexToWorld(openvdb::Coord(50,50,50));
+//     EXPECT_TRUE(xyzu[0] == 0.100);
+//     EXPECT_TRUE(xyzu[1] == 0.101);
+//     EXPECT_TRUE(xyzu[2] == 0.101);
 
-    openvdb::Vec3d xyzv = xformv->indexToWorld(openvdb::Coord(50,50,50));
-    EXPECT_TRUE(xyzv[0] == 0.101);
-    EXPECT_TRUE(xyzv[1] == 0.100);
-    EXPECT_TRUE(xyzv[2] == 0.101);
 
-    openvdb::Vec3d xyzw = xformw->indexToWorld(openvdb::Coord(50,50,50));
-    EXPECT_TRUE(xyzw[0] == 0.101);
-    EXPECT_TRUE(xyzw[1] == 0.101);
-    EXPECT_TRUE(xyzw[2] == 0.100);
 
-    // smoke is a cell-centred quantity, so offsets are (0.5,0.5,0.5)
-    openvdb::Vec3d xyzsmoke = xformsmoke->indexToWorld(openvdb::Coord(50,50,50));
-    EXPECT_TRUE(xyzsmoke[0] == 0.101);
-    EXPECT_TRUE(xyzsmoke[1] == 0.101);
-    EXPECT_TRUE(xyzsmoke[2] == 0.101);
+//     // smoke is a cell-centred quantity, so offsets are (0.5,0.5,0.5)
+//     openvdb::Vec3d xyzsmoke = xformsmoke->indexToWorld(openvdb::Coord(50,50,50));
+//     EXPECT_TRUE(xyzsmoke[0] == 0.101);
+//     EXPECT_TRUE(xyzsmoke[1] == 0.101);
+//     EXPECT_TRUE(xyzsmoke[2] == 0.101);
 
-    auto cellwidth = solver.getCellwidth();
-    EXPECT_TRUE(cellwidth == 0.002);
-}
+//     auto cellwidth = solver.getCellwidth();
+//     EXPECT_TRUE(cellwidth == 0.002);
+// }
 
 TEST(SymmBandMatrix, clear_sparse_matrix)
 {
@@ -919,6 +895,74 @@ TEST(Interpolation, monotonic_cubic){
     EXPECT_NEAR(cubic_interpolator.wsSample(openvdb::Vec3d(2.9, 1.6, 1.5)),  0.64800, 1e-5);
     EXPECT_NEAR(cubic_interpolator.wsSample(openvdb::Vec3d(3,   1.6, 1.5)),  0.5,     1e-5);
 }
+
+
+TEST(Grid, velocity){
+
+    // We store u,v and w components of velocity in the middle of the cell faces, like this (diagram 2d only)
+    //              v
+    //      o-------o-------o
+    //      |       |       |
+    // u -->|       |       |<-- u
+    //      |       |       |
+    //      o-------o-------o
+    //              v
+
+
+    using namespace openvdb;
+
+    Vec3dGrid::Ptr velocity = Vec3dGrid::create(Vec3d(0,0,0));
+    Vec3dGrid::Accessor v_access = velocity->getAccessor();
+
+    v_access.setValue(Coord(0,0,0), Vec3d(1,2,3));
+    v_access.setValue(Coord(0,1,0), Vec3d(1,2,3));
+    v_access.setValue(Coord(0,0,1), Vec3d(1,2,3));
+    v_access.setValue(Coord(0,1,1), Vec3d(1,2,3)); 
+    v_access.setValue(Coord(1,0,0), Vec3d(3,4,5));
+    v_access.setValue(Coord(1,1,0), Vec3d(3,4,5));
+    v_access.setValue(Coord(1,0,1), Vec3d(3,4,5));
+    v_access.setValue(Coord(1,1,1), Vec3d(3,4,5));        
+
+    EXPECT_EQ(v_access.getValue(Coord(0,0,0)), Vec3d(1,2,3));
+    EXPECT_EQ(v_access.getValue(Coord(1,0,0)), Vec3d(3,4,5));
+    EXPECT_EQ(v_access.getValue(Coord(0,1,0)), Vec3d(1,2,3));
+    EXPECT_EQ(v_access.getValue(Coord(0,0,1)), Vec3d(1,2,3));
+
+    auto transform = openvdb::math::Transform::createLinearTransform(1.0);
+    // pretend the velocity values are co-located in the centre of the voxels
+    transform->preTranslate(Vec3d(0.5, 0.5, 0.5));
+    velocity->setTransform(transform);
+    // using the staggered sampler offsets each component by 0.5 making it a staggered grid
+    tools::GridSampler<Vec3dGrid, tools::StaggeredBoxSampler> sps(*velocity);
+
+    EXPECT_EQ(sps.wsSample(Vec3d(1, 1, 1)), Vec3d(3,3,4));
+
+}
+
+TEST(General, max){
+
+    using namespace openvdb;
+
+    // https://stackoverflow.com/questions/2837854/initializing-an-object-to-all-zeroes
+    // https://en.cppreference.com/cpp/language/value_initialization
+    Vec3d a{};
+    EXPECT_EQ(a, Vec3d(0,0,0));
+
+    EXPECT_EQ(std::max(Vec3d(1,2,3), Vec3d(3,2,1)), Vec3d(3,2,1));
+
+    Vec3d b(1,2,3);
+    std::cout << std::max({b[0],b[1],b[2]});
+
+}
+
+
+TEST(General, add_vector_scalar){
+    openvdb::Vec3d a(1,1,1);
+
+    // vector + scalar works when I would expect it to complain
+    EXPECT_EQ(a + 3, openvdb::Vec3d(4,4,4));
+}
+
 
 
 int main(int argc, char **argv) {

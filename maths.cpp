@@ -18,6 +18,7 @@ bool CGSolver(const SymmBandMatrix& A, const SymmBandMatrix::VectorType& b, Symm
     s = r;
     
     double sigma = r.dot(r);
+    // if r is empty, can lead to nans proliferating in the pressure and solve will break. Need to exit early to prevent that.
     if (sigma == 0.0) {
         std::cout << "CG early exit: RHS is zero\n";
         return true;
@@ -33,7 +34,6 @@ bool CGSolver(const SymmBandMatrix& A, const SymmBandMatrix::VectorType& b, Symm
         alpha = sigma/(s.dot(z));
         
         p = p + alpha*s;
-
         r = r - alpha*z;
         
         maxr = max(r);
