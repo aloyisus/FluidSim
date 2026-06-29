@@ -1,6 +1,7 @@
 #include <iostream>
 #include "grid.h"
 #include "interp.h"
+#include <openvdb/tools/VolumeAdvect.h>
 
 
 
@@ -40,22 +41,22 @@ FluidGrid::FluidGrid(int wh, int ht, int dh, double tstep, double rh, std::strin
 
 
 template<class T>
-FluidQuantity<T>::FluidQuantity(FluidGrid* parent, bool staggered, typename T::ValueType value)
+FluidQuantity<T>::FluidQuantity(FluidGrid* parent, bool staggered, typename T::ValueType value) :   parentgrid(parent),
+                                                                                                    staggered(staggered),
+                                                                                                    offsetx(0.5),
+                                                                                                    offsety(0.5),
+                                                                                                    offsetz(0.5)
 {
     using ValueType = typename T::ValueType;
 
-    offsetx = 0.5;
-    offsety = 0.5;
-    offsetz = 0.5;
-
-    staggered = staggered;
-
-    parentgrid = parent;
+    quantity = T::create(value);
 
     if (staggered){
         xsamples = parent->getWidth() + 1;
         ysamples = parent->getHeight() + 1;
         zsamples = parent->getDepth() + 1;
+        // I don't know what effect, if any, this has
+        quantity->setGridClass(openvdb::GRID_STAGGERED);
     }
     else{
         xsamples = parent->getWidth();
@@ -63,20 +64,10 @@ FluidQuantity<T>::FluidQuantity(FluidGrid* parent, bool staggered, typename T::V
         zsamples = parent->getDepth();
     }
 
-    // Create OpenVDB grids with given dimensions
-    quantity = T::create(value);
-    buffer = T::create(value);
-    // quantity->setGridClass(openvdb::GRID_STAGGERED);
-    // buffer->setGridClass(openvdb::GRID_STAGGERED);
-
-    q_access = new typename T::Accessor(quantity->getAccessor());
-    b_access = new typename T::Accessor(buffer->getAccessor());
-
     // Adjust grid transform to match desired grid spacing and offset
     openvdb::math::Transform::Ptr q_transform = openvdb::math::Transform::createLinearTransform(parent->getCellwidth());
     q_transform->preTranslate(openvdb::Vec3d(offsetx, offsety, offsetz));
     quantity->setTransform(q_transform);
-    buffer->setTransform(q_transform);
 }
 
 
@@ -95,77 +86,27 @@ void FluidGrid::setDeltaT(){
         writetocache = true;
         nextframetime += framedeltaT;
     }
-
     std::cout << "deltaT=" <<  deltaT << "currtime=" <<  currtime << "writetocache=" << writetocache << "framenumber=" << framenumber << std::endl;
 }
 
 
 void FluidGrid::Advect(){
-
     temperature->Advect();
     smoke->Advect();
     velocity->Advect();
-    
-    velocity->swap();
-    smoke->swap();
-    temperature->swap();
 
     // we need to enforce solid boundary conditions after advection
     SetWallBoundaries();
-
 }
 
 
 template <class T>
 void FluidQuantity<T>::Advect()
 {
-
-    const double dt = parentgrid->getDeltaT();
-    double cellwidth = parentgrid->getCellwidth();
-
-    // Staggered Velocity grid
     auto velocityGrid = parentgrid->getVelocity()->quantity;
-    openvdb::tools::GridSampler<openvdb::Vec3dGrid, openvdb::tools::StaggeredBoxSampler> velSampler(*velocityGrid);
-
-    if constexpr (std::is_same_v<T, openvdb::Vec3dGrid>)
-    {
-        openvdb::tools::GridSampler<openvdb::Vec3dGrid, openvdb::tools::BoxSampler> quantitySampler(*quantity);
-
-        for (int k = 0; k < zsamples; ++k)
-            for (int j = 0; j < ysamples; ++j)
-                for (int i = 0; i < xsamples; ++i) {
-
-                    // ---- RK2 (index space) ----
-                    openvdb::Vec3d p(i,j,k);
-                    openvdb::Vec3d v1 = q_access->getValue(openvdb::Coord(i, j, k)) / cellwidth;
-                    openvdb::Vec3d pmid = p - 0.5 * dt * v1;
-                    openvdb::Vec3d v2 = velSampler.isSample(pmid) / cellwidth;
-                    openvdb::Vec3d p_back = p - dt * v2;
-
-                    typename T::ValueType sample = quantitySampler.isSample(p_back);
-                    b_access->setValue(openvdb::Coord(i, j, k), sample);
-                }
-    }
-    else
-    {
-        // scalar field (smoke, density, etc.)
-        openvdb::tools::GridSampler<openvdb::FloatGrid, openvdb::tools::BoxSampler> quantitySampler(*quantity);
-
-        for (int k = 0; k < zsamples; ++k)
-            for (int j = 0; j < ysamples; ++j)
-                for (int i = 0; i < xsamples; ++i) {
-
-                    // ---- RK2 (index space) ----
-                    openvdb::Vec3d p(i,j,k);
-                    openvdb::Vec3d v1 = parentgrid->getVelocity()->getQuantity(i, j, k) / cellwidth;
-                    openvdb::Vec3d pmid = p - 0.5 * dt * v1;
-                    openvdb::Vec3d v2 = velSampler.isSample(pmid) / cellwidth;
-                    openvdb::Vec3d p_back = p - dt * v2;
-
-                    typename T::ValueType sample = quantitySampler.isSample(p_back);
-                    b_access->setValue(openvdb::Coord(i, j, k), sample);
-                }
-    }    
+    openvdb::tools::VolumeAdvection advector(*velocityGrid);
+    typename T::Ptr outGrid = advector.template advect<T, fluidsim::tools::CubicSampler>(*quantity, parentgrid->getDeltaT());
+    std::swap(quantity, outGrid); 
 }
 
 
@@ -174,27 +115,27 @@ void FluidGrid::AddForces(){
 
     openvdb::tools::GridSampler<openvdb::FloatGrid, openvdb::tools::BoxSampler> tsampler(*temperature->quantity);
     openvdb::tools::GridSampler<openvdb::FloatGrid, openvdb::tools::BoxSampler> dsampler(*smoke->quantity);
+    auto v_access = velocity->quantity->getAccessor();
     double alpha = 1;
     double beta = 1/AMBIENT_TEMPERATURE;
-    openvdb::Coord ijk;
-    for (int k = 1; k < velocity->getzSamples()-1; k++)
+    for (int k = 0; k < velocity->getzSamples(); k++)
         for (int j = 1; j < velocity->getySamples()-1; j++)
-            for (int i = 1; i < velocity->getxSamples()-1; i++){
-                ijk = openvdb::Coord(i,j,k);
+            for (int i = 0; i < velocity->getxSamples(); i++){
+                auto ijk = openvdb::Coord(i,j,k);
                 auto result = getDeltaT() * (alpha*dsampler.isSample(ijk) - beta*(tsampler.isSample(ijk)-AMBIENT_TEMPERATURE)) * GRAVITY;
-                velocity->setQuantity(i,j,k, velocity->getQuantity(i,j,k) + openvdb::Vec3d(0,result,0));
+                v_access.setValue(ijk, v_access.getValue(ijk) + openvdb::Vec3d(0,result,0));
             }
 }
 
 
 void FluidGrid::addSmoke(double x, double y, double z, double wh, double h, double l, double density_value, double temperature_value) {
 
-    double x0 = int((x-wh/2)*nwidth);
-    double x1 = int((x+wh/2)*nwidth);
-    double y0 = int(y*nheight);
-    double y1 = int((y+h)*nheight);
-    double z0 = int((z-l/2)*ndepth);
-    double z1 = int((z+l/2)*ndepth);
+    double x0 = round((x-wh/2)*nwidth);
+    double x1 = round((x+wh/2)*nwidth);
+    double y0 = round(y*nheight);
+    double y1 = round((y+h)*nheight);
+    double z0 = round((z-l/2)*ndepth);
+    double z1 = round((z+l/2)*ndepth);
 
     temperature->addEmitter(x0, y0, z0, x1, y1, z1, temperature_value);;
     smoke->addEmitter(x0, y0, z0, x1, y1, z1, density_value);
@@ -203,10 +144,57 @@ void FluidGrid::addSmoke(double x, double y, double z, double wh, double h, doub
 
 template <class T>
 void FluidQuantity<T>::addEmitter(int x0, int y0, int z0, int x1, int y1, int z1, typename T::ValueType value) {
+    auto q_access = quantity->getAccessor();
     for (int z = std::max(z0, 0); z < std::min(z1, zsamples); z++)
         for (int y = std::max(y0, 0); y < std::min(y1, ysamples); y++)
             for (int x = std::max(x0, 0); x < std::min(x1, xsamples); x++)
-                setQuantity(x,y,z, value);
+                q_access.setValue(openvdb::Coord(x,y,z), value);
+}
+
+
+void FluidGrid::updateVelocities() {
+
+    auto v_access = velocity->quantity->getAccessor();
+    double scale = deltaT/(density*cellwidth);
+    // p.44 Bridson
+    for (int k = 0; k < ndepth; k++)
+        for (int j = 0; j < nheight; j++)
+            for (int i = 0; i < nwidth; i++) {
+                auto p = scale*getPressure(i,j,k);
+                v_access.setValue(openvdb::Coord(i,j,k), v_access.getValue(openvdb::Coord(i,j,k)) - p);
+                v_access.setValue(openvdb::Coord(i+1,j,k), v_access.getValue(openvdb::Coord(i+1,j,k)) + openvdb::Vec3d(p,0,0));
+                v_access.setValue(openvdb::Coord(i,j+1,k), v_access.getValue(openvdb::Coord(i,j+1,k)) + openvdb::Vec3d(0,p,0));
+                v_access.setValue(openvdb::Coord(i,j,k+1), v_access.getValue(openvdb::Coord(i,j,k+1)) + openvdb::Vec3d(0,0,p));
+            }
+}
+
+
+void FluidGrid::SetWallBoundaries(){
+    using namespace openvdb;
+    auto v_access = velocity->quantity->getAccessor();
+    //Boundary conditions for the walls of the box
+    //Set the normal component to the wall to zero
+    for (int k = 0; k < ndepth+1; k++)
+        for (int j = 0; j < nheight+1; j++){
+            Vec3d result(v_access.getValue(Coord(0,j,k)));
+            v_access.setValue(Coord(0,j,k), Vec3d(0,result[1],result[2]));
+            result = v_access.getValue(Coord(nwidth,j,k));
+            v_access.setValue(Coord(nwidth,j,k), Vec3d(0,result[1],result[2]));
+        }
+    for (int k = 0; k < ndepth+1; k++)
+        for (int i = 0; i < nwidth+1; i++){
+            Vec3d result(v_access.getValue(Coord(i,0,k)));
+            v_access.setValue(Coord(i,0,k), Vec3d(result[0],0,result[2]));
+            result = v_access.getValue(Coord(i,nheight,k));
+            v_access.setValue(Coord(i,nheight,k), Vec3d(result[0],0,result[2]));
+        }
+    for (int j = 0; j < nheight+1; j++)
+        for (int i = 0; i < nwidth+1; i++){
+            Vec3d result(v_access.getValue(Coord(i,j,0)));
+            v_access.setValue(Coord(i,j,0), Vec3d(result[0],result[1],0));
+            result = v_access.getValue(Coord(i,j,ndepth));
+            v_access.setValue(Coord(i,j,ndepth), Vec3d(result[0],result[1],0));
+        }
 }
 
 
@@ -214,6 +202,7 @@ void FluidGrid::BuildLinearSystem(){
     double Ascale =  deltaT/(density*cellwidth*cellwidth);
     double rscale = 1.0/cellwidth;
 
+    auto v_access = velocity->quantity->getAccessor();
     clearSparseMatrix(A);
     r->fill(0);
 
@@ -242,11 +231,10 @@ void FluidGrid::BuildLinearSystem(){
                     setA(ix, 3, -Ascale);
                 }
 
-                (*r)[ix] = -rscale*(velocity->getQuantity(i+1,j,k)[0] - velocity->getQuantity(i,j,k)[0] +
-                                    velocity->getQuantity(i,j+1,k)[1] - velocity->getQuantity(i,j,k)[1] +
-                                    velocity->getQuantity(i,j,k+1)[2] - velocity->getQuantity(i,j,k)[2]);
+                (*r)[ix] = -rscale*(v_access.getValue(openvdb::Coord(i+1,j,k))[0] - v_access.getValue(openvdb::Coord(i,j,k))[0] +
+                                    v_access.getValue(openvdb::Coord(i,j+1,k))[1] - v_access.getValue(openvdb::Coord(i,j,k))[1] +
+                                    v_access.getValue(openvdb::Coord(i,j,k+1))[2] - v_access.getValue(openvdb::Coord(i,j,k))[2]);
             }
-
 }
 
 
@@ -273,53 +261,7 @@ void FluidGrid::Project(){
     if (pressure->eq(pressure_before))
         std::cout << "No change to pressure" << std::endl;
 
-    updateVelocities();
     std::cout << "max divergence after solve = " <<     maxDivergence() << std::endl;
-}
-
-
-void FluidGrid::updateVelocities() {
-
-    double scale = deltaT/(density*cellwidth);
-    // p.44 Bridson
-    for (int k = 0; k < ndepth; k++)
-        for (int j = 0; j < nheight; j++)
-            for (int i = 0; i < nwidth; i++) {
-                auto p = scale*getPressure(i,j,k);
-                velocity->setQuantity(i,j,k, velocity->getQuantity(i,j,k) - p);
-                velocity->setQuantity(i+1,j,k, velocity->getQuantity(i+1,j,k) + openvdb::Vec3d(p,0,0));
-                velocity->setQuantity(i,j+1,k, velocity->getQuantity(i,j+1,k) + openvdb::Vec3d(0,p,0));
-                velocity->setQuantity(i,j,k+1, velocity->getQuantity(i,j,k+1) + openvdb::Vec3d(0,0,p));
-            }
-    SetWallBoundaries();
-}
-
-
-void FluidGrid::SetWallBoundaries(){
-    using namespace openvdb;
-    //Boundary conditions for the walls of the box
-    //Set the normal component to the wall to zero
-    for (int k = 0; k < ndepth+1; k++)
-        for (int j = 0; j < nheight+1; j++){
-            Vec3d result(velocity->getQuantity(0,j,k));
-            velocity->setQuantity(0,j,k, Vec3d(0,result[1],result[2]));
-            result = velocity->getQuantity(nwidth,j,k);
-            velocity->setQuantity(nwidth,j,k, Vec3d(0,result[1],result[2]));
-        }
-    for (int k = 0; k < ndepth+1; k++)
-        for (int i = 0; i < nwidth+1; i++){
-            Vec3d result = velocity->getQuantity(i,0,k);
-            velocity->setQuantity(i,0,k, Vec3d(result[0],0,result[2]));
-            result = velocity->getQuantity(i,nheight,k);
-            velocity->setQuantity(i,nheight,k, Vec3d(result[0],0,result[2]));
-        }
-    for (int j = 0; j < nheight+1; j++)
-        for (int i = 0; i < nwidth+1; i++){
-            Vec3d result = velocity->getQuantity(i,j,0);
-            velocity->setQuantity(i,j,0, Vec3d(result[0],result[1],0));
-            result = velocity->getQuantity(i,j,ndepth);
-            velocity->setQuantity(i,j,ndepth, Vec3d(result[0],result[1],0));
-        }
 }
 
 
@@ -355,6 +297,8 @@ void FluidGrid::Update(){
     end = std::chrono::high_resolution_clock::now();
     elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
     std::cout << "Project time (seconds) = " << elapsed.count() * 1e-9 << std::endl;
+    updateVelocities();
+    SetWallBoundaries();
 
     currtime += deltaT;
 
@@ -370,13 +314,18 @@ void FluidGrid::WriteToCache(){
     openvdb::FloatGrid::Ptr densityGrid = openvdb::FloatGrid::create();
     openvdb::FloatGrid::Accessor densityAccessor = densityGrid->getAccessor();
 
-    // // Create temperature grid and get its accessor
-    // openvdb::FloatGrid::Ptr temperatureGrid = openvdb::FloatGrid::create();
-    // openvdb::FloatGrid::Accessor temperatureAccessor = temperatureGrid->getAccessor();
-
     // Create u-velocity grid and get its accessor
+    openvdb::FloatGrid::Ptr uvelocityGrid = openvdb::FloatGrid::create();
+    openvdb::FloatGrid::Accessor uvelocityAccessor = uvelocityGrid->getAccessor();
+
+    // Create v-velocity grid and get its accessor
     openvdb::FloatGrid::Ptr vvelocityGrid = openvdb::FloatGrid::create();
-    openvdb::FloatGrid::Accessor vvelocityAccessor = vvelocityGrid->getAccessor();   
+    openvdb::FloatGrid::Accessor vvelocityAccessor = vvelocityGrid->getAccessor();
+
+    // Create w-velocity grid and get its accessor
+    openvdb::FloatGrid::Ptr wvelocityGrid = openvdb::FloatGrid::create();
+    openvdb::FloatGrid::Accessor wvelocityAccessor = wvelocityGrid->getAccessor();
+
 
     // Define a coordinate with large signed indices.
     openvdb::Coord ijk;
@@ -385,11 +334,15 @@ void FluidGrid::WriteToCache(){
     int& j = ijk[1];
     int& k = ijk[2];
 
+    auto s_access = smoke->quantity->getAccessor();
     for (k=0; k<ndepth; k++)
         for (j=0; j<nheight; j++)
             for (i=0; i<nwidth; i++){
-                densityAccessor.setValue(ijk, smoke->getQuantity(i,j,k));
-                // vvelocityAccessor.setValue(ijk, velocity->getQuantity(i,j,k)[0]);
+                densityAccessor.setValue(ijk, s_access.getValue(ijk));
+                // uvelocityAccessor.setValue(ijk, fabs(velocity->getQuantity(i,j,k)[0]));
+                // vvelocityAccessor.setValue(ijk, fabs(velocity->getQuantity(i,j,k)[1]));
+                // wvelocityAccessor.setValue(ijk, fabs(velocity->getQuantity(i,j,k)[2]));
+
             }
 
     char outfile[128];
@@ -401,13 +354,17 @@ void FluidGrid::WriteToCache(){
     openvdb::io::File file(outfile);
 
     densityGrid->setName("density");
+    uvelocityGrid->setName("uvelocity");
     vvelocityGrid->setName("vvelocity");
+    wvelocityGrid->setName("wvelocity");
 
 
     // Add the grid pointers to a container.
     openvdb::GridPtrVec grids;
     grids.push_back(densityGrid);
+    // grids.push_back(uvelocityGrid);
     // grids.push_back(vvelocityGrid);
+    // grids.push_back(wvelocityGrid);
 
     // Write out the contents of the container.
     file.write(grids);

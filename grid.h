@@ -23,9 +23,6 @@ class FluidGrid;
 template <class T>
 class FluidQuantity {
 
-    typename T::Accessor* q_access;
-    typename T::Accessor* b_access;
-
     FluidGrid* parentgrid;
 
     int xsamples, ysamples, zsamples;
@@ -38,17 +35,9 @@ public:
     using ValueType = typename T::ValueType;
 
     typename T::Ptr quantity;
-    typename T::Ptr buffer;
     
     FluidQuantity(FluidGrid* parent, bool staggered, ValueType value);
-    
-    ~FluidQuantity() {
-        // No explicit cleanup required for OpenVDB grids
-        delete q_access;
-        delete b_access;
-    }
 
-    //Accessors
     int getxSamples(){ return xsamples; };
     int getySamples(){ return ysamples; };
     int getzSamples(){ return zsamples; };
@@ -58,25 +47,8 @@ public:
     double getOffsetz(){ return offsetz; };
     
     openvdb::math::Transform::Ptr getTransform() const {return quantity->transformPtr();}
-
-    ValueType getQuantity(int i, int j, int k) const {
-        return q_access->getValue(openvdb::Coord(i, j, k));
-    }
-
-    void setQuantity(int i, int j, int k, ValueType value) {
-        q_access->setValue(openvdb::Coord(i, j, k), value);
-    }
-
-    void setBuffer(int i, int j, int k, ValueType value) {
-        b_access->setValue(openvdb::Coord(i, j, k), value);
-    }
     
     ValueType max() const;
-       
-    void swap() {
-        std::swap(quantity, buffer);
-        std::swap(q_access, b_access);
-    }
     
     void Advect();
   
@@ -230,92 +202,20 @@ class FluidGrid {
 
         double maxdiv = 0;
         double div;
-
+        auto v_access = velocity->quantity->getAccessor();
         for (int k=0; k<ndepth; k++)
             for (int j=0; j<nheight; j++)
                 for (int i=0; i<nwidth; i++){
                     
-                    div =  fabs(  velocity->getQuantity(i+1,j,k)[0] - velocity->getQuantity(i,j,k)[0]
-                                + velocity->getQuantity(i,j+1,k)[1] - velocity->getQuantity(i,j,k)[1]
-                                + velocity->getQuantity(i,j,k+1)[2] - velocity->getQuantity(i,j,k)[2])/cellwidth;
+                    div =  fabs(v_access.getValue(openvdb::Coord(i+1,j,k))[0] - v_access.getValue(openvdb::Coord(i,j,k))[0] +
+                                v_access.getValue(openvdb::Coord(i,j+1,k))[1] - v_access.getValue(openvdb::Coord(i,j,k))[1] +
+                                v_access.getValue(openvdb::Coord(i,j,k+1))[2] - v_access.getValue(openvdb::Coord(i,j,k))[2])/cellwidth;
                     
                     maxdiv = fmax(div,maxdiv);
                     
                 }
         return maxdiv;
     }
-    
-    bool sanityChecks(double eps) {
-
-        int slice_size  = nwidth * nheight;
-        int total_cells = nwidth * nheight * ndepth;
-        for(int k=0; k<ndepth; k++)
-            for(int j=0; j<nheight; j++)
-                for(int i=0; i<nwidth; i++){
-
-                    auto ix = i + (j * nwidth) + (k * slice_size);
-                    auto row = A->getConstRow(ix);
-
-                    int nn = 0;
-                    int count = 0;
-                    SymmBandMatrix::ValueType sum = 0;
-                    // Iterate ONLY over the non-zero elements in this row
-                    for (auto it = row.cbegin(); it; ++it) {
-                        sum += *it;
-                        count++;
-
-                        int jx = it.column();
-                        SymmBandMatrix::ValueType val_ij = *it;
-                        if ((jx==ix) && !(val_ij > eps)){
-                            std::cout << "non-positive diagonal element " << ix << std::endl;
-                            return false;
-                        }
-                        
-                        // Fetch the mirrored value (A_ji)
-                        if (jx != ix){
-                            SymmBandMatrix::ValueType val_ji = A->getValue(jx, ix);
-                            
-                            // Floating point comparison
-                            if (std::abs(val_ij - val_ji) > eps) {
-                                std::cout << "asymmetry detected at row " << ix << " column " << jx << " " << val_ij << " " << val_ji << std::endl;
-                                return false; 
-                            }
-                        }
-                    }
-
-                    if (i > 0) nn += 1;
-                    if (i < nwidth-1) nn += 1;
-                    if (j > 0) nn += 1;
-                    if (j < nheight-1) nn += 1;                
-                    if (k > 0) nn += 1;
-                    if (k < ndepth-1) nn += 1;
-
-                    if (count != nn + 1){
-                        std::cout << "count in row ix = " << ix << "should be " << nn+1 << " but is " << count << std::endl;
-                        return false;
-                    }
-
-                    if (!count){
-                        std::cout << "no non-zero elements in row " << i << std::endl; 
-                        return false;
-                    }
-
-                    if (std::abs(sum) > eps){
-                        std::cout << count << " elements summing to non-zero in row " << i << " total is " << std::abs(sum) << std::endl;
-
-                        for (auto it = row.cbegin(); it; ++it) {
-                            std::cout << "  col=" << it.column()
-                                    << " value=" << *it
-                                    << '\n';
-                        }
-
-                        return false;
-                    }
-
-        }
-        return true;
-    }
-
 };
 
 
